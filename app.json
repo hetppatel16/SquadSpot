@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "SquadSpot",
+    "slug": "squadspot",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "79c8190a-9037-4fea-ba06-a4b61931ae11"
+      }
+    },
+    "owner": "ansh-mistrys-organization"
+  }
+}
