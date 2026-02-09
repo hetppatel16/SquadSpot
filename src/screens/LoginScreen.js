@@ -44,8 +44,8 @@ export default function LoginScreen({ navigation }) {
           
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Plan your next escape with AI.</Text>
+            <Text style={styles.title}>SQUAD SPOT</Text>
+            <Text style={styles.subtitle}>Plan your next hangout</Text>
           </View>
 
           {/* Form Section */}
