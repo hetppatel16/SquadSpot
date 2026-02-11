@@ -12,7 +12,7 @@ import {
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons'; 
 import { LinearGradient } from 'expo-linear-gradient'; 
 
-export default function PlannerScreen() {
+export default function PlannerScreen( {navigation} ) {
   const [location, setLocation] = useState('Vadodara, Gujarat');
   const [budget, setBudget] = useState('2500');
   const [people, setPeople] = useState(5);
@@ -169,7 +169,10 @@ export default function PlannerScreen() {
         
         {/* Floating Action Button */}
         <View style={styles.fabContainer}>
-          <TouchableOpacity style={styles.planButton}>
+          <TouchableOpacity 
+            style={styles.planButton}
+            onPress={()=> navigation.navigate('Loading')}
+          >
             <Text style={styles.planButtonText}>Plan My Day</Text>
             <MaterialIcons name="auto-awesome" size={24} color="#102217" />
           </TouchableOpacity>
