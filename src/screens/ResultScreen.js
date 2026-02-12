@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   },
   pagination: {
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    marginBottom: 20, marginTop: 5, gap: 8,
+    marginBottom: 40, marginTop: 5, gap: 8,
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)' },
   activeDot: {
