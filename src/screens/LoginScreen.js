@@ -9,144 +9,145 @@ import {
   KeyboardAvoidingView, 
   Platform,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  ScrollView // <--- Added ScrollView
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient'; 
+import { LinearGradient } from 'expo-linear-gradient'; // Ensure this matches your import (expo-linear-gradient)
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // This is the state that controls the Eye button
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-        {/* 1. Background Layer */}
-        <LinearGradient
-          colors={['#102217', '#050505']}
-          style={StyleSheet.absoluteFillObject}
-        />
-        
-        {/* Animated Background Shapes (Simulated with Views) */}
-        <View style={[styles.glowShape, { top: -100, left: -50, backgroundColor: '#1e3a8a' }]} />
-        <View style={[styles.glowShape, { bottom: -100, right: -50, backgroundColor: '#581c87' }]} />
+      {/* 1. Background Layer (Kept strictly outside the scroller so it stays still) */}
+      <LinearGradient
+        colors={['#102217', '#050505']}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={[styles.glowShape, { top: -100, left: -50, backgroundColor: '#1e3a8a' }]} />
+      <View style={[styles.glowShape, { bottom: -100, right: -50, backgroundColor: '#581c87' }]} />
 
-        {/* 2. Main Content */}
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.content}
-        >
-          
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>SQUAD SPOT</Text>
-            <Text style={styles.subtitle}>Plan your next hangout</Text>
-          </View>
-
-          {/* Form Section */}
-          <View style={styles.form}>
-
-            {/* Email Input */}
-            <View style={styles.inputWrapper}>
-              <Text style={styles.label}>Email Address</Text>
-              <View style={styles.glassInput}>
-                <MaterialIcons name="mail-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
-                <TextInput 
-                  style={styles.input}
-                  placeholder="name@example.com"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
+      {/* 2. Keyboard & Scroll Logic */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled" // Allows buttons to be tapped even when keyboard is open
+          >
+            
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title}>SQUAD SPOT</Text>
+              <Text style={styles.subtitle}>Plan your next hangout</Text>
             </View>
 
-            {/* Password Input (With Working Eye Toggle) */}
-            <View style={styles.inputWrapper}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.glassInput}>
-                <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
-                <TextInput 
-                  style={styles.input}
-                  placeholder="••••••••"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={password}
-                  onChangeText={setPassword}
-                  // This is the magic logic:
-                  secureTextEntry={!isPasswordVisible} 
-                />
-                
-                {/* The Eye Button */}
-                <TouchableOpacity 
-                  onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                  style={styles.eyeButton}
-                >
-                  <MaterialIcons 
-                    name={isPasswordVisible ? "visibility" : "visibility-off"} 
-                    size={22} 
-                    color="rgba(255,255,255,0.4)" 
+            {/* Form Section */}
+            <View style={styles.form}>
+
+              {/* Email Input */}
+              <View style={styles.inputWrapper}>
+                <Text style={styles.label}>Email Address</Text>
+                <View style={styles.glassInput}>
+                  <MaterialIcons name="mail-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
+                  <TextInput 
+                    style={styles.input}
+                    placeholder="name@example.com"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
                   />
-                </TouchableOpacity>
+                </View>
               </View>
+
+              {/* Password Input */}
+              <View style={styles.inputWrapper}>
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.glassInput}>
+                  <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
+                  <TextInput 
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!isPasswordVisible} 
+                  />
+                  
+                  <TouchableOpacity 
+                    onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                    style={styles.eyeButton}
+                  >
+                    <MaterialIcons 
+                      name={isPasswordVisible ? "visibility" : "visibility-off"} 
+                      size={22} 
+                      color="rgba(255,255,255,0.4)" 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Forgot Password */}
+              <TouchableOpacity style={styles.forgotButton}>
+                <Text style={styles.forgotText}>Forgot Password?</Text>
+              </TouchableOpacity>
+
+              {/* Main Action Button */}
+              <TouchableOpacity 
+                style={styles.loginButton}
+                onPress={() => navigation.navigate('Planner')}
+              >
+                <Text style={styles.loginButtonText}>Log In</Text>
+                <MaterialIcons name="arrow-forward" size={20} color="#102217" />
+              </TouchableOpacity>
+
             </View>
 
-            {/* Forgot Password */}
-            <TouchableOpacity style={styles.forgotButton}>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity>
+            {/* Social Login */}
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>OR CONTINUE WITH</Text>
+              <View style={styles.line} />
+            </View>
 
-            {/* Main Action Button */}
-            <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={()=>navigation.navigate('Planner')}
-              >
-              <Text style={styles.loginButtonText}>Log In</Text>
-              <MaterialIcons name="arrow-forward" size={20} color="#102217" />
-            </TouchableOpacity>
+            <View style={styles.socialRow}>
+              <TouchableOpacity style={styles.socialButton}>
+                <FontAwesome name="apple" size={24} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialButton}>
+                <FontAwesome name="google" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
 
-          </View>
+            {/* Footer */}
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Don't have an account? </Text>
+              <TouchableOpacity>
+                <Text style={styles.signUpText}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Social Login */}
-          <View style={styles.divider}>
-            <View style={styles.line} />
-            <Text style={styles.orText}>OR CONTINUE WITH</Text>
-            <View style={styles.line} />
-          </View>
-
-          <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.socialButton}>
-              <FontAwesome name="apple" size={24} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.socialButton}>
-              <FontAwesome name="google" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <TouchableOpacity>
-              <Text style={styles.signUpText}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
-
-        </KeyboardAvoidingView>
-      </View>
-    </TouchableWithoutFeedback>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#102217', // Fallback color
+    backgroundColor: '#102217', 
   },
   glowShape: {
     position: 'absolute',
@@ -155,10 +156,12 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     opacity: 0.4,
   },
-  content: {
-    flex: 1,
+  // ---> NEW LOGIC HERE <---
+  scrollContent: {
+    flexGrow: 1, // This is the magic property. It tells the scrollview to fill the screen, but stretch if needed.
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 40, // Adds breathing room at the top/bottom when scrolling
   },
   header: {
     alignItems: 'center',
@@ -166,7 +169,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 36,
-    fontWeight: '800', // Extra bold like your design
+    fontWeight: '800', 
     color: '#ffffff',
     marginBottom: 8,
     letterSpacing: 0.5,
@@ -194,7 +197,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     height: 60,
-    borderRadius: 30, // Fully rounded
+    borderRadius: 30, 
     paddingHorizontal: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -221,7 +224,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   loginButton: {
-    backgroundColor: '#0df269', // That Neon Green/Emerald from your design
+    backgroundColor: '#0df269', 
     height: 60,
     borderRadius: 30,
     flexDirection: 'row',
