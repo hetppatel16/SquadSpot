@@ -8,7 +8,8 @@ import {
   Image, 
   Dimensions,
   StatusBar,
-  SafeAreaView 
+  SafeAreaView ,
+  Linking
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -161,7 +162,14 @@ export default function ResultScreen({ navigation }) {
                      style={StyleSheet.absoluteFillObject}
                      pointerEvents="none"
                   />
-                  <TouchableOpacity style={styles.navigateButton}>
+                  <TouchableOpacity 
+                      style={styles.navigateButton}
+                      onPress={() => {
+                      const firstStop = plan.stops[0].title; 
+                      const mapUrl = `https://maps.google.com/?q=${firstStop}`;
+                      Linking.openURL(mapUrl);
+                    }}
+                  >
                     <Text style={styles.navigateText}>Navigate This Route</Text>
                     <View style={styles.navIconCircle}>
                        <MaterialIcons name="navigation" size={20} color="#102217" />
