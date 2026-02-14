@@ -7,17 +7,47 @@ import {
   StyleSheet, 
   ScrollView, 
   StatusBar,
-  SafeAreaView
+  SafeAreaView,
+  Keyboard 
 } from 'react-native';
-import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons'; 
+import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons'; 
 import { LinearGradient } from 'expo-linear-gradient'; 
 
-export default function PlannerScreen( {navigation} ) {
-  const [location, setLocation] = useState('Vadodara, Gujarat');
+export default function PlannerScreen({ navigation }) {
+  const [location, setLocation] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [filteredCities, setFilteredCities] = useState([]);
+
   const [budget, setBudget] = useState('2500');
   const [people, setPeople] = useState(5);
   const [selectedVibes, setSelectedVibes] = useState([]);
   const [duration, setDuration] = useState('Half Day');
+
+  const cities = [
+    "Vadodara, Gujarat", "Ahmedabad, Gujarat", "Surat, Gujarat", 
+    "Rajkot, Gujarat", "Mumbai, Maharashtra", "Pune, Maharashtra", 
+    "Bangalore, Karnataka", "Delhi, India", "Jaipur, Rajasthan",
+    "Udaipur, Rajasthan", "Goa, India", "Indore, MP"
+  ];
+
+  const handleSearch = (text) => {
+    setLocation(text);
+    if (text.length > 0) {
+      const filtered = cities.filter(city => 
+        city.toLowerCase().includes(text.toLowerCase())
+      );
+      setFilteredCities(filtered);
+      setShowDropdown(true);
+    } else {
+      setShowDropdown(false);
+    }
+  };
+
+  const selectCity = (city) => {
+    setLocation(city);
+    setShowDropdown(false); 
+    Keyboard.dismiss();
+  };
 
   const vibes = [
     { id: 1, label: 'Nature', icon: 'tree' },
@@ -40,7 +70,6 @@ export default function PlannerScreen( {navigation} ) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Background */}
       <LinearGradient
         colors={['#102217', '#050505']}
         style={StyleSheet.absoluteFillObject}
@@ -59,22 +88,44 @@ export default function PlannerScreen( {navigation} ) {
             </TouchableOpacity>
           </View>
 
-          {/* 1. Location Input */}
-          <View style={styles.section}>
+          {/* Location Input Section */}
+          <View style={[styles.section, { zIndex: 100 }]}> 
             <Text style={styles.label}>Where are we going?</Text>
+            
             <View style={styles.inputContainer}>
               <MaterialIcons name="location-on" size={24} color="#0df269" style={styles.inputIcon} />
               <TextInput 
                 style={styles.textInput}
                 value={location}
-                onChangeText={setLocation}
-                placeholder="City or Area"
+                onChangeText={handleSearch}
+                placeholder="Search City..."
                 placeholderTextColor="rgba(255,255,255,0.3)"
               />
+              {location.length > 0 && (
+                <TouchableOpacity onPress={() => { setLocation(''); setShowDropdown(false); }}>
+                  <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.3)" />
+                </TouchableOpacity>
+              )}
             </View>
+
+            {/* Dropdown Menu */}
+            {showDropdown && (
+              <View style={styles.dropdownList}>
+                {filteredCities.map((city, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    style={styles.dropdownItem}
+                    onPress={() => selectCity(city)}
+                  >
+                    <MaterialIcons name="location-city" size={16} color="rgba(255,255,255,0.6)" style={{marginRight: 10}}/>
+                    <Text style={{color: 'white', fontSize: 14}}>{city}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
-          {/* 2. Budget Input (The Big One) */}
+          {/* Budget Input Section */}
           <View style={styles.section}>
             <Text style={styles.label}>Total Group Budget</Text>
             <View style={styles.budgetContainer}>
@@ -89,11 +140,11 @@ export default function PlannerScreen( {navigation} ) {
               />
             </View>
             <Text style={styles.perPersonText}>
-              Approx. ₹{(parseInt(budget) / people).toFixed(0)} per person
+              Approx. ₹{(parseInt(budget) || 0 / Math.max(1, people)).toFixed(0)} per person
             </Text>
           </View>
 
-          {/* 3. Group Size & Duration Row */}
+          {/* Group Size & Duration Row */}
           <View style={styles.rowSection}>
             
             {/* Group Size */}
@@ -135,7 +186,7 @@ export default function PlannerScreen( {navigation} ) {
             </View>
           </View>
 
-          {/* 4. Vibe Selector */}
+          {/* Vibe Selector */}
           <View style={styles.section}>
             <Text style={styles.label}>What's the Vibe?</Text>
             <View style={styles.vibesGrid}>
@@ -167,7 +218,7 @@ export default function PlannerScreen( {navigation} ) {
 
         </ScrollView>
         
-        {/* Floating Action Button */}
+        {/* FAB */}
         <View style={styles.fabContainer}>
           <TouchableOpacity 
             style={styles.planButton}
@@ -380,5 +431,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginRight: 8,
+  },
+  // Add these to your existing styles
+  dropdownList: {
+    position: 'absolute', // Floats over other content
+    top: 85, // Positions it right below the input
+    left: 0,
+    right: 0,
+    backgroundColor: '#1c3829', // Dark card color
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    zIndex: 1000, // Ensures it sits ON TOP of everything
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  dropdownText: {
+    color: 'white',
+    fontSize: 14,
   },
 });
