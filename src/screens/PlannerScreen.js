@@ -193,16 +193,18 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
+    paddingTop: 60, // <--- CHANGED: Increased from default to 60 (Pushes everything down)
+    paddingBottom: 120, // Adds space at bottom so content doesn't get hidden behind the floating button
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 32,
-    marginTop: 10,
+    marginBottom: 40, // <--- CHANGED: Increased from 32 (More space below title)
+    marginTop: 20,    // <--- CHANGED: Increased from 10 (More space above title)
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 32, // <--- CHANGED: Slightly bigger for better visual balance
     fontWeight: 'bold',
     color: 'white',
   },
@@ -221,7 +223,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 40, // <--- CHANGED: Increased from 32 (Spreads out the inputs to fill empty space)
   },
   label: {
     color: 'rgba(255,255,255,0.6)',
@@ -275,7 +277,7 @@ const styles = StyleSheet.create({
   },
   rowSection: {
     flexDirection: 'row',
-    marginBottom: 32,
+    marginBottom: 40, // <--- CHANGED: Increased from 32
   },
   halfCard: {
     flex: 1,
