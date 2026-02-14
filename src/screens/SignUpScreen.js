@@ -28,6 +28,18 @@ export default function SignUpScreen({ navigation }) {
 
   // Password Validation Logic
   const handleSignUp = () => {
+
+    // savthi pehla field check
+    if (name.trim() === ''|| phone.trim() === ''|| email.trim() === '' || password.trim() === '' || confirmPassword.trim() === '') {
+            Alert.alert('All Details are mandatory');
+            return; 
+          }
+    
+    if (phone.length !== 10) {
+      Alert.alert("Invalid Phone", "Please enter a valid 10-digit phone number.");
+      return;
+    }
+
     // 1. Check if passwords match
     if (password !== confirmPassword) {
       Alert.alert("Error", "Passwords do not match!");
@@ -117,6 +129,7 @@ export default function SignUpScreen({ navigation }) {
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
+                    maxLength={10}
                   />
                 </View>
               </View>

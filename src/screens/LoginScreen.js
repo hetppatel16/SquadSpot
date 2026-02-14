@@ -10,7 +10,8 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  ScrollView // <--- Added ScrollView
+  ScrollView, // <--- Added ScrollView
+  Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; // Ensure this matches your import (expo-linear-gradient)
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
@@ -19,7 +20,16 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const handleLogin = () => {
+      
+      if (email.trim() === '' || password.trim() === '') {
+        Alert.alert('Missing Details', 'Please enter both your email and password.');
+        return; 
+      }
 
+      
+      navigation.navigate('Planner');
+    };
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -105,7 +115,7 @@ export default function LoginScreen({ navigation }) {
               {/* Main Action Button */}
               <TouchableOpacity 
                 style={styles.loginButton}
-                onPress={() => navigation.navigate('Planner')}
+                onPress={handleLogin}
               >
                 <Text style={styles.loginButtonText}>Log In</Text>
                 <MaterialIcons name="arrow-forward" size={20} color="#102217" />
