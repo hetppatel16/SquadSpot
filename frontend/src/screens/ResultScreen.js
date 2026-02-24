@@ -1,34 +1,33 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   Dimensions,
   StatusBar,
-  SafeAreaView ,
+  SafeAreaView,
   Linking
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 
-import { styles , CARD_WIDTH , SPACING} from "../styles/ResultStyles";
+import { styles, CARD_WIDTH, SPACING } from "../styles/ResultStyles";
 
 const { width } = Dimensions.get('window');
-// const CARD_WIDTH = width * 0.85; 
-// const SPACING = (width - CARD_WIDTH) / 2; 
 
-export default function ResultScreen({ navigation }) {
+export default function ResultScreen({ navigation, route }) {
 
   const [activeSlide, setActiveSlide] = useState(0);
-  
-  const plans = [
-    { 
-      id: 1, 
-      title: 'The Chill Evening', 
-      totalEst: '450', 
+
+  // Use real data from API (passed via navigation params) or fallback to demo data
+  const plans = route.params?.plans || [
+    {
+      id: 1,
+      title: 'The Chill Evening',
+      totalEst: '450',
       image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
       stops: [
         { icon: 'park', title: 'Sayaji Baug', type: 'Evening Walk', time: '5:00 PM', price: 'Free', desc: 'Relaxing stroll through the lush gardens and visit the museum.' },
@@ -36,26 +35,6 @@ export default function ResultScreen({ navigation }) {
         { icon: 'movie', title: 'Inox Movie', type: 'Late Show', time: '8:00 PM', price: '~₹300', desc: 'Catch the latest blockbuster at the premium screen.' }
       ]
     },
-    { 
-      id: 2, 
-      title: 'Foodie Run', 
-      totalEst: '600', 
-      image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=1000&auto=format&fit=crop',
-      stops: [
-        { icon: 'fastfood', title: 'Ratribazar', type: 'Street Food', time: '6:00 PM', price: '~₹200', desc: 'Explore the night food market varieties.' },
-        { icon: 'icecream', title: 'Dairy Den', type: 'Dessert', time: '8:00 PM', price: '~₹100', desc: 'Famous soft serve ice cream to end the night.' } 
-        // ^ FIXED: Changed 'ice-cream' to 'icecream'
-      ]
-    },
-    { 
-      id: 3, 
-      title: 'Nature Escape', 
-      totalEst: '150', 
-      image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1000&auto=format&fit=crop',
-      stops: [
-        { icon: 'landscape', title: 'Kamati Baug', type: 'Walk', time: '5:00 PM', price: 'Free', desc: 'Fresh air and greenery.' }
-      ]
-    }
   ];
 
   // 2. Add this function to calculate the index
@@ -69,7 +48,7 @@ export default function ResultScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Background Layer */}
       <View style={styles.backgroundLayer}>
         <LinearGradient
@@ -80,7 +59,7 @@ export default function ResultScreen({ navigation }) {
       </View>
 
       <SafeAreaView style={styles.safeArea}>
-        
+
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -93,9 +72,8 @@ export default function ResultScreen({ navigation }) {
         </View>
 
         {/* Carousel Area */}
-        <ScrollView 
-          horizontal 
-          // pagingEnabled 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: SPACING - 10, paddingVertical: 20 }}
           decelerationRate="fast"
@@ -105,17 +83,17 @@ export default function ResultScreen({ navigation }) {
         >
           {plans.map((plan) => (
             <View key={plan.id} style={[styles.cardContainer, { marginRight: 20 }]}>
-              
+
               <View style={styles.card}>
-                
+
                 {/* Card Image Header */}
                 <View style={styles.cardImageContainer}>
                   <Image source={{ uri: plan.image }} style={styles.cardImage} />
-                  <LinearGradient 
-                    colors={['transparent', '#15291f']} 
-                    style={styles.imageGradient} 
+                  <LinearGradient
+                    colors={['transparent', '#15291f']}
+                    style={styles.imageGradient}
                   />
-                  
+
                   <View style={styles.cardHeaderContent}>
                     <Text style={styles.planTitle}>{plan.title}</Text>
                     <View style={styles.priceTag}>
@@ -160,21 +138,21 @@ export default function ResultScreen({ navigation }) {
                 {/* Footer Button */}
                 <View style={styles.cardFooter}>
                   <LinearGradient
-                     colors={['rgba(21, 41, 31, 0)', '#15291f']}
-                     style={StyleSheet.absoluteFillObject}
-                     pointerEvents="none"
+                    colors={['rgba(21, 41, 31, 0)', '#15291f']}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
                   />
-                  <TouchableOpacity 
-                      style={styles.navigateButton}
-                      onPress={() => {
-                      const firstStop = plan.stops[0].title; 
+                  <TouchableOpacity
+                    style={styles.navigateButton}
+                    onPress={() => {
+                      const firstStop = plan.stops[0].title;
                       const mapUrl = `https://maps.google.com/?q=${firstStop}`;
                       Linking.openURL(mapUrl);
                     }}
                   >
                     <Text style={styles.navigateText}>Navigate This Route</Text>
                     <View style={styles.navIconCircle}>
-                       <MaterialIcons name="navigation" size={20} color="#102217" />
+                      <MaterialIcons name="navigation" size={20} color="#102217" />
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -188,12 +166,12 @@ export default function ResultScreen({ navigation }) {
         {/* Pagination Dots */}
         <View style={styles.pagination}>
           {plans.map((_, index) => (
-            <View 
-              key={index} 
+            <View
+              key={index}
               style={[
-                styles.dot, 
-                activeSlide === index && styles.activeDot // Apply active style if indexes match
-              ]} 
+                styles.dot,
+                activeSlide === index && styles.activeDot
+              ]}
             />
           ))}
         </View>
@@ -207,4 +185,3 @@ export default function ResultScreen({ navigation }) {
     </View>
   );
 }
-

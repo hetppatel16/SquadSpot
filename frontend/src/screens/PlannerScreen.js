@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
   StatusBar,
   SafeAreaView,
-  Keyboard 
+  Keyboard
 } from 'react-native';
-import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons'; 
-import { LinearGradient } from 'expo-linear-gradient'; 
+import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { styles } from '../styles/PlannerStyles';
 
@@ -26,8 +26,8 @@ export default function PlannerScreen({ navigation }) {
   const [duration, setDuration] = useState('Half Day');
 
   const cities = [
-    "Vadodara, Gujarat", "Ahmedabad, Gujarat", "Surat, Gujarat", 
-    "Rajkot, Gujarat", "Mumbai, Maharashtra", "Pune, Maharashtra", 
+    "Vadodara, Gujarat", "Ahmedabad, Gujarat", "Surat, Gujarat",
+    "Rajkot, Gujarat", "Mumbai, Maharashtra", "Pune, Maharashtra",
     "Bangalore, Karnataka", "Delhi, India", "Jaipur, Rajasthan",
     "Udaipur, Rajasthan", "Goa, India", "Indore, MP"
   ];
@@ -35,7 +35,7 @@ export default function PlannerScreen({ navigation }) {
   const handleSearch = (text) => {
     setLocation(text);
     if (text.length > 0) {
-      const filtered = cities.filter(city => 
+      const filtered = cities.filter(city =>
         city.toLowerCase().includes(text.toLowerCase())
       );
       setFilteredCities(filtered);
@@ -47,7 +47,7 @@ export default function PlannerScreen({ navigation }) {
 
   const selectCity = (city) => {
     setLocation(city);
-    setShowDropdown(false); 
+    setShowDropdown(false);
     Keyboard.dismiss();
   };
 
@@ -71,7 +71,7 @@ export default function PlannerScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       <LinearGradient
         colors={['#102217', '#050505']}
         style={StyleSheet.absoluteFillObject}
@@ -79,24 +79,24 @@ export default function PlannerScreen({ navigation }) {
 
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          
+
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Plan Your Outing</Text>
             <TouchableOpacity style={styles.profileButton}>
               <View style={styles.profileImagePlaceholder}>
-                 <Text style={styles.profileInitials}>AM</Text>
+                <Text style={styles.profileInitials}>AM</Text>
               </View>
             </TouchableOpacity>
           </View>
 
           {/* Location Input Section */}
-          <View style={[styles.section, { zIndex: 100 }]}> 
+          <View style={[styles.section, { zIndex: 100 }]}>
             <Text style={styles.label}>Where are we going?</Text>
-            
+
             <View style={styles.inputContainer}>
               <MaterialIcons name="location-on" size={24} color="#0df269" style={styles.inputIcon} />
-              <TextInput 
+              <TextInput
                 style={styles.textInput}
                 value={location}
                 onChangeText={handleSearch}
@@ -114,13 +114,13 @@ export default function PlannerScreen({ navigation }) {
             {showDropdown && (
               <View style={styles.dropdownList}>
                 {filteredCities.map((city, index) => (
-                  <TouchableOpacity 
-                    key={index} 
+                  <TouchableOpacity
+                    key={index}
                     style={styles.dropdownItem}
                     onPress={() => selectCity(city)}
                   >
-                    <MaterialIcons name="location-city" size={16} color="rgba(255,255,255,0.6)" style={{marginRight: 10}}/>
-                    <Text style={{color: 'white', fontSize: 14}}>{city}</Text>
+                    <MaterialIcons name="location-city" size={16} color="rgba(255,255,255,0.6)" style={{ marginRight: 10 }} />
+                    <Text style={{ color: 'white', fontSize: 14 }}>{city}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -132,7 +132,7 @@ export default function PlannerScreen({ navigation }) {
             <Text style={styles.label}>Total Group Budget</Text>
             <View style={styles.budgetContainer}>
               <Text style={styles.currencySymbol}>₹</Text>
-              <TextInput 
+              <TextInput
                 style={styles.budgetInput}
                 value={budget}
                 onChangeText={setBudget}
@@ -148,19 +148,19 @@ export default function PlannerScreen({ navigation }) {
 
           {/* Group Size & Duration Row */}
           <View style={styles.rowSection}>
-            
+
             {/* Group Size */}
             <View style={[styles.halfCard, { marginRight: 8 }]}>
               <Text style={styles.cardLabel}>Group Size</Text>
               <View style={styles.counterContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setPeople(Math.max(1, people - 1))}
                   style={styles.counterButton}
                 >
                   <MaterialIcons name="remove" size={20} color="white" />
                 </TouchableOpacity>
                 <Text style={styles.counterValue}>{people}</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setPeople(people + 1)}
                   style={styles.counterButton}
                 >
@@ -174,15 +174,15 @@ export default function PlannerScreen({ navigation }) {
               <Text style={styles.cardLabel}>Duration</Text>
               <View style={styles.durationSelector}>
                 <TouchableOpacity onPress={() => setDuration('Few Hrs')}>
-                   <Text style={[styles.durationText, duration === 'Few Hrs' && styles.activeDuration]}>2h</Text>
+                  <Text style={[styles.durationText, duration === 'Few Hrs' && styles.activeDuration]}>2h</Text>
                 </TouchableOpacity>
                 <View style={styles.verticalLine} />
                 <TouchableOpacity onPress={() => setDuration('Half Day')}>
-                   <Text style={[styles.durationText, duration === 'Half Day' && styles.activeDuration]}>4h</Text>
+                  <Text style={[styles.durationText, duration === 'Half Day' && styles.activeDuration]}>4h</Text>
                 </TouchableOpacity>
                 <View style={styles.verticalLine} />
                 <TouchableOpacity onPress={() => setDuration('Full Day')}>
-                   <Text style={[styles.durationText, duration === 'Full Day' && styles.activeDuration]}>Full</Text>
+                  <Text style={[styles.durationText, duration === 'Full Day' && styles.activeDuration]}>Full</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -195,15 +195,15 @@ export default function PlannerScreen({ navigation }) {
               {vibes.map((vibe) => {
                 const isSelected = selectedVibes.includes(vibe.id);
                 return (
-                  <TouchableOpacity 
-                    key={vibe.id} 
+                  <TouchableOpacity
+                    key={vibe.id}
                     style={[styles.vibeChip, isSelected && styles.vibeChipSelected]}
                     onPress={() => toggleVibe(vibe.id)}
                   >
-                    <FontAwesome5 
-                      name={vibe.icon} 
-                      size={14} 
-                      color={isSelected ? '#102217' : '#0df269'} 
+                    <FontAwesome5
+                      name={vibe.icon}
+                      size={14}
+                      color={isSelected ? '#102217' : '#0df269'}
                       style={{ marginRight: 8 }}
                     />
                     <Text style={[styles.vibeText, isSelected && styles.vibeTextSelected]}>
@@ -219,12 +219,14 @@ export default function PlannerScreen({ navigation }) {
           <View style={{ height: 100 }} />
 
         </ScrollView>
-        
+
         {/* FAB */}
         <View style={styles.fabContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.planButton}
-            onPress={()=> navigation.navigate('Loading')}
+            onPress={() => navigation.navigate('Loading', {
+              location, budget, people, selectedVibes, duration
+            })}
           >
             <Text style={styles.planButtonText}>Plan My Day</Text>
             <MaterialIcons name="auto-awesome" size={24} color="#102217" />

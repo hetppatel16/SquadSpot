@@ -25,7 +25,7 @@ engine = create_engine(
 )
 
 # Session factory: call SessionLocal() to get a new session for a batch of queries.
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 
 @contextmanager
