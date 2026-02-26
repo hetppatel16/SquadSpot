@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SquadSpot
 
 AI-powered group outing planner – find the perfect itinerary for your squad.
@@ -43,3 +44,6 @@ uvicorn app.main:app --reload
 | POST | `/api/itinerary` | Generate optimized itinerary |
 | GET | `/api/pois` | List all points of interest |
 | GET | `/api/health` | Health check |
+=======
+# SquadSpot
+>>>>>>> e2b28618bdd98982f2e5a6bd90244a967e693b91
