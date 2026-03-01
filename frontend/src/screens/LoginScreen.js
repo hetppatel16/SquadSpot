@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  StatusBar, 
-  KeyboardAvoidingView, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  StatusBar,
+  KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
+  Pressable,
   Keyboard,
-  ScrollView, // <--- Added ScrollView
+  ScrollView,
   Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; // Ensure this matches your import (expo-linear-gradient)
@@ -23,15 +23,15 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const handleLogin = () => {
-      
-      if (email.trim() === '' || password.trim() === '') {
-        Alert.alert('Missing Details', 'Please enter both your email and password.');
-        return; 
-      }
 
-      
-      navigation.navigate('Planner');
-    };
+    if (email.trim() === '' || password.trim() === '') {
+      Alert.alert('Missing Details', 'Please enter both your email and password.');
+      return;
+    }
+
+
+    navigation.navigate('Planner');
+  };
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -45,32 +45,29 @@ export default function LoginScreen({ navigation }) {
       <View style={[styles.glowShape, { bottom: -100, right: -50, backgroundColor: '#581c87' }]} />
 
       {/* 2. Keyboard & Scroll Logic */}
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView 
+        <Pressable onPress={Keyboard.dismiss} style={{ flex: 1 }}>
+          <ScrollView
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled" // Allows buttons to be tapped even when keyboard is open
+            keyboardShouldPersistTaps="handled"
           >
-            
-            {/* Header */}
+
             <View style={styles.header}>
               <Text style={styles.title}>SQUAD SPOT</Text>
               <Text style={styles.subtitle}>Plan your next hangout</Text>
             </View>
 
-            {/* Form Section */}
             <View style={styles.form}>
 
-              {/* Email Input */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Email Address</Text>
                 <View style={styles.glassInput}>
                   <MaterialIcons name="mail-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
-                  <TextInput 
+                  <TextInput
                     style={styles.input}
                     placeholder="name@example.com"
                     placeholderTextColor="rgba(255,255,255,0.3)"
@@ -82,40 +79,40 @@ export default function LoginScreen({ navigation }) {
                 </View>
               </View>
 
-              {/* Password Input */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Password</Text>
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
-                  <TextInput 
+                  <TextInput
                     style={styles.input}
                     placeholder="••••••••"
                     placeholderTextColor="rgba(255,255,255,0.3)"
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry={!isPasswordVisible} 
+                    secureTextEntry={!isPasswordVisible}
                   />
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     onPress={() => setIsPasswordVisible(!isPasswordVisible)}
                     style={styles.eyeButton}
                   >
-                    <MaterialIcons 
-                      name={isPasswordVisible ? "visibility" : "visibility-off"} 
-                      size={22} 
-                      color="rgba(255,255,255,0.4)" 
+                    <MaterialIcons
+                      name={isPasswordVisible ? "visibility" : "visibility-off"}
+                      size={22}
+                      color="rgba(255,255,255,0.4)"
                     />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Forgot Password */}
-              <TouchableOpacity style={styles.forgotButton}>
+              <TouchableOpacity
+                style={styles.forgotButton}
+                onPress={() => navigation.navigate('ForgotPassword')}
+              >
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 
-              {/* Main Action Button */}
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.loginButton}
                 onPress={handleLogin}
               >
@@ -125,7 +122,6 @@ export default function LoginScreen({ navigation }) {
 
             </View>
 
-            {/* Social Login */}
             <View style={styles.divider}>
               <View style={styles.line} />
               <Text style={styles.orText}>OR CONTINUE WITH</Text>
@@ -141,18 +137,17 @@ export default function LoginScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* Footer */}
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
               <TouchableOpacity
-                onPress={()=>navigation.navigate('SignUp')}
+                onPress={() => navigation.navigate('SignUp')}
               >
                 <Text style={styles.signUpText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
 
           </ScrollView>
-        </TouchableWithoutFeedback>
+        </Pressable>
       </KeyboardAvoidingView>
     </View>
   );
