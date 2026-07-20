@@ -11,17 +11,96 @@ import {
   Platform,
   Pressable,
   Keyboard,
-  SafeAreaView
+  SafeAreaView,
+  Alert
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
-export default function OtpScreen({ navigation }) {
+const validatePasswordInline = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters long");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("One lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("One number");
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push("One special character (@, #, $, %, etc.)");
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+export default function OtpScreen({ navigation, route }) {
   // State to hold the 4 digits
   const [otp, setOtp] = useState(['', '', '', '']);
+  const [newPassword, setNewPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   // Refs to automatically move focus between the 4 boxes
   const inputRefs = useRef([]);
+
+  const handleVerifyOtp = async () => {
+    const otpCode = otp.join('');
+    if (otpCode.length < 4) {
+      if (Platform.OS === 'web') {
+        window.alert('Please enter the 4-digit OTP.');
+      } else {
+        Alert.alert('Incomplete OTP', 'Please enter the 4-digit OTP.');
+      }
+      return;
+    }
+
+    if (!newPassword.trim()) {
+      const emptyMsg = 'Please enter a new password.';
+      if (Platform.OS === 'web') window.alert(emptyMsg);
+      else Alert.alert('Missing Details', emptyMsg);
+      return;
+    }
+
+    const passwordValidation = validatePasswordInline(newPassword);
+    if (!passwordValidation.isValid) {
+      const errorMsg = "Password must include:\n" + passwordValidation.errors.map(e => `• ${e}`).join('\n');
+      if (Platform.OS === 'web') window.alert(errorMsg);
+      else Alert.alert('Weak Password', errorMsg);
+      return;
+    }
+
+    const email = route.params?.email || '';
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email, token: otpCode, new_password: newPassword }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        if (Platform.OS === 'web') {
+          window.alert('Password reset and updated successfully! You can now log in.');
+        } else {
+          Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
+        }
+        navigation.navigate('Login');
+      } else {
+        const errMsg = data.detail || 'OTP verification failed.';
+        if (Platform.OS === 'web') {
+          window.alert(errMsg);
+        } else {
+          Alert.alert('Verification Failed', errMsg);
+        }
+      }
+    } catch (error) {
+      console.error('OTP Verification Error:', error);
+      const connMsg = 'Cannot reach backend server. Make sure it is running.';
+      if (Platform.OS === 'web') {
+        window.alert(connMsg);
+      } else {
+        Alert.alert('Connection Error', connMsg);
+      }
+    }
+  };
 
   const handleOtpChange = (text, index) => {
     const newOtp = [...otp];
@@ -101,12 +180,33 @@ export default function OtpScreen({ navigation }) {
                     ))}
                   </View>
 
+                  {/* New Password input */}
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.label}>New Password</Text>
+                    <View style={styles.glassInput}>
+                      <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
+                      <TextInput 
+                        style={styles.input} 
+                        placeholder="Enter your new password" 
+                        placeholderTextColor="rgba(255,255,255,0.3)" 
+                        value={newPassword} 
+                        onChangeText={setNewPassword} 
+                        secureTextEntry={!isPasswordVisible} 
+                        autoCapitalize="none"
+                        autoComplete="new-password"
+                        textContentType="newPassword"
+                      />
+                      <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton}>
+                        <MaterialIcons name={isPasswordVisible ? "visibility" : "visibility-off"} size={22} color="rgba(255,255,255,0.4)" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   {/* Gradient Submit Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={styles.submitButtonWrapper}
-                    // In the future, this will trigger the API call to Dhairya's backend
-                    onPress={() => console.log(`OTP Entered: ${otp.join('')}`)}
+                    onPress={handleVerifyOtp}
                   >
                     <LinearGradient
                       colors={['#0df269', '#0be361', '#09d45a']}

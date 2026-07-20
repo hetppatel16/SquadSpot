@@ -169,5 +169,37 @@ export const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 15,
     fontWeight: '500',
-  }
+  },
+  inputWrapper: {
+    marginBottom: 16,
+  },
+  label: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginLeft: 12,
+  },
+  glassInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    height: 60,
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  icon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 16,
+    height: '100%',
+  },
+  eyeButton: {
+    padding: 8,
+  },
 });

@@ -11,7 +11,8 @@ import {
   Platform,
   Pressable,
   Keyboard,
-  SafeAreaView
+  SafeAreaView,
+  Alert
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +20,51 @@ import { BlurView } from 'expo-blur';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
+
+  const handleSendOtp = async () => {
+    const emailClean = email.trim();
+    if (emailClean === '') {
+      if (Platform.OS === 'web') {
+        window.alert('Please enter your email address.');
+      } else {
+        Alert.alert('Missing Email', 'Please enter your email address.');
+      }
+      return;
+    }
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: emailClean }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        if (Platform.OS === 'web') {
+          window.alert('OTP code generated successfully. Please check your backend console logs!');
+        } else {
+          Alert.alert('OTP Generated', 'OTP code generated successfully. Please check your backend console logs!');
+        }
+        navigation.navigate('OtpScreen', { email: emailClean });
+      } else {
+        const errMsg = data.detail || 'Reset password request failed.';
+        if (Platform.OS === 'web') {
+          window.alert(errMsg);
+        } else {
+          Alert.alert('Error', errMsg);
+        }
+      }
+    } catch (error) {
+      console.error('Reset Password Error:', error);
+      const connMsg = 'Cannot reach backend server. Make sure it is running.';
+      if (Platform.OS === 'web') {
+        window.alert(connMsg);
+      } else {
+        Alert.alert('Connection Error', connMsg);
+      }
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -77,6 +123,8 @@ export default function ForgotPasswordScreen({ navigation }) {
                         onChangeText={setEmail}
                         keyboardType="email-address"
                         autoCapitalize="none"
+                        autoComplete="email"
+                        textContentType="emailAddress"
                       />
                       <MaterialIcons
                         name="mail"
@@ -91,7 +139,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={styles.submitButtonWrapper}
-                    onPress={() => navigation.navigate('OtpScreen')}
+                    onPress={handleSendOtp}
                   >
                     <LinearGradient
                       colors={['#0df269', '#0be361', '#09d45a']}

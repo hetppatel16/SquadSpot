@@ -15,7 +15,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { styles } from '../styles/PlannerStyles';
 
-export default function PlannerScreen({ navigation }) {
+export default function PlannerScreen({ navigation, route }) {
+  const user = route?.params?.user;
+  const fullName = user?.full_name || 'Dhairya Soni';
+
+  const getInitials = (name) => {
+    if (!name) return 'DS';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + (parts[parts.length - 1][0] || '')).toUpperCase();
+  };
+
+  const initials = getInitials(fullName);
+
   const [location, setLocation] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredCities, setFilteredCities] = useState([]);
@@ -85,7 +97,7 @@ export default function PlannerScreen({ navigation }) {
             <Text style={styles.headerTitle}>Plan Your Outing</Text>
             <TouchableOpacity style={styles.profileButton}>
               <View style={styles.profileImagePlaceholder}>
-                <Text style={styles.profileInitials}>AM</Text>
+                <Text style={styles.profileInitials}>{initials}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -142,7 +154,7 @@ export default function PlannerScreen({ navigation }) {
               />
             </View>
             <Text style={styles.perPersonText}>
-              Approx. ₹{(parseInt(budget) || 0 / Math.max(1, people)).toFixed(0)} per person
+              Approx. ₹{((parseInt(budget, 10) || 0) / Math.max(1, people)).toFixed(0)} per person
             </Text>
           </View>
 
@@ -224,9 +236,21 @@ export default function PlannerScreen({ navigation }) {
         <View style={styles.fabContainer}>
           <TouchableOpacity
             style={styles.planButton}
-            onPress={() => navigation.navigate('Loading', {
-              location, budget, people, selectedVibes, duration
-            })}
+            onPress={() => {
+              const normalizedLocation = location.trim();
+              if (!normalizedLocation) {
+                alert('Please choose a city before planning your trip.');
+                return;
+              }
+              navigation.navigate('Loading', {
+                location: normalizedLocation,
+                budget: budget.trim(),
+                people,
+                selectedVibes,
+                duration,
+                mood: selectedVibes.length > 0 ? 'adventurous' : 'relaxed',
+              });
+            }}
           >
             <Text style={styles.planButtonText}>Plan My Day</Text>
             <MaterialIcons name="auto-awesome" size={24} color="#102217" />

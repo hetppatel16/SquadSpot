@@ -23,6 +23,9 @@
         "projectId": "79c8190a-9037-4fea-ba06-a4b61931ae11"
       }
     },
-    "owner": "ansh-mistrys-organization"
+    "owner": "ansh-mistrys-organization",
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

@@ -1,4 +1,4 @@
-﻿# FastAPI routes: POST /itinerary, GET /pois, GET /health.
+# FastAPI routes: POST /itinerary, GET /pois, GET /health.
 
 from fastapi import APIRouter, HTTPException
 
@@ -20,6 +20,7 @@ def post_itinerary(req: ItineraryRequest):
             "mood": req.mood,
             "latitude": req.latitude,
             "longitude": req.longitude,
+            "city": req.city,
         }
         result = get_itinerary(ctx)
         return ItineraryResponse(**result)
