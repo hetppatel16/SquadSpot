@@ -1,5 +1,4 @@
-// Base URL pointing to your FastAPI local backend server
-const BASE_URL = 'http://127.0.0.1:8000';
+import { API_ENDPOINTS } from '../constants/config';
 
 /**
  * 1. User Authentication - Sign Up
@@ -24,7 +23,7 @@ export async function signUpUser(userData) {
       };
     }
 
-    const response = await fetch(`${BASE_URL}/api/auth/signup`, {
+    const response = await fetch(API_ENDPOINTS.SIGNUP, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,7 +62,7 @@ export async function loginUser(credentials) {
       };
     }
 
-    const response = await fetch(`${BASE_URL}/api/auth/login`, {
+    const response = await fetch(API_ENDPOINTS.LOGIN, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,7 +83,90 @@ export async function loginUser(credentials) {
 }
 
 /**
- * 3. Fetch Generated Itinerary Itinerary from Backend Pipeline
+ * 3. User Authentication - OAuth (Google / Apple)
+ */
+export async function oauthLogin(provider, idToken, accessToken = null) {
+  try {
+    const response = await fetch(API_ENDPOINTS.OAUTH, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider,
+        id_token: idToken,
+        access_token: accessToken,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'OAuth authorization failed.');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("OAuth API Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 4. User Authentication - Request Password Reset OTP
+ */
+export async function requestPasswordReset(email) {
+  try {
+    const response = await fetch(API_ENDPOINTS.RESET_PASSWORD, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to send OTP.');
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Reset Password API Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 5. User Authentication - Verify OTP & Set New Password
+ */
+export async function verifyOtpAndResetPassword(email, token, newPassword) {
+  try {
+    const response = await fetch(API_ENDPOINTS.VERIFY_OTP, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        token,
+        new_password: newPassword,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to verify OTP.');
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Verify OTP API Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 6. Fetch Generated Itinerary from Backend Pipeline
  */
 export async function fetchItinerary(userContext) {
   try {
@@ -109,7 +191,7 @@ export async function fetchItinerary(userContext) {
       durationMinutes = 480;
     }
 
-    const response = await fetch(`${BASE_URL}/api/itinerary`, {
+    const response = await fetch(API_ENDPOINTS.ITINERARY, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -129,7 +211,6 @@ export async function fetchItinerary(userContext) {
       throw new Error('Failed to fetch itinerary options from server');
     }
 
-    // Return the raw data and let LoadingScreen handle the transformation once
     return await response.json();
   } catch (error) {
     console.error("Fetch Itinerary API Error:", error);
@@ -138,7 +219,7 @@ export async function fetchItinerary(userContext) {
 }
 
 /**
- * 4. Normalizer: Maps raw backend data objects cleanly into frontend layout shapes
+ * 7. Normalizer: Maps raw backend data objects cleanly into frontend layout shapes
  */
 export function transformToPlan(apiResponse) {
   if (!apiResponse) return [];
@@ -155,7 +236,6 @@ export function transformToPlan(apiResponse) {
       id: plan.id || index + 1,
       title: plan.title || `Route Option ${index + 1}`,
       totalEst: String(rawTotalCost),
-      // Optional enhancement: Dynamically fallback to first stop's image if main plan lacks one
       image: plan.image || rawStops[0]?.image_url || 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
       stops: rawStops.map((stop, i) => {
         const isFood = stop.category?.toLowerCase().includes('food') || stop.type?.toLowerCase().includes('food');
@@ -166,7 +246,7 @@ export function transformToPlan(apiResponse) {
           time: stop.time || "Flexible",
           price: stop.price !== undefined ? (typeof stop.price === 'number' ? `~\u20b9${stop.price}` : stop.price) : "Free",
           desc: stop.description || stop.desc || "No description details provided.",
-          image: stop.image_url || null // Map image links arriving from API responses safely
+          image: stop.image_url || null
         };
       })
     };

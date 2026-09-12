@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { verifyOtpAndResetPassword } from '../services/api';
 
 const validatePasswordInline = (password) => {
   const errors = [];
@@ -33,11 +33,10 @@ const validatePasswordInline = (password) => {
 };
 
 export default function OtpScreen({ navigation, route }) {
-  // State to hold the 4 digits
   const [otp, setOtp] = useState(['', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  // Refs to automatically move focus between the 4 boxes
+  const [isLoading, setIsLoading] = useState(false);
   const inputRefs = useRef([]);
 
   const handleVerifyOtp = async () => {
@@ -68,37 +67,24 @@ export default function OtpScreen({ navigation, route }) {
 
     const email = route.params?.email || '';
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/verify-otp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: email, token: otpCode, new_password: newPassword }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        if (Platform.OS === 'web') {
-          window.alert('Password reset and updated successfully! You can now log in.');
-        } else {
-          Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
-        }
-        navigation.navigate('Login');
+      setIsLoading(true);
+      await verifyOtpAndResetPassword(email, otpCode, newPassword);
+      if (Platform.OS === 'web') {
+        window.alert('Password reset and updated successfully! You can now log in.');
       } else {
-        const errMsg = data.detail || 'OTP verification failed.';
-        if (Platform.OS === 'web') {
-          window.alert(errMsg);
-        } else {
-          Alert.alert('Verification Failed', errMsg);
-        }
+        Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
       }
+      navigation.navigate('Login');
     } catch (error) {
       console.error('OTP Verification Error:', error);
-      const connMsg = 'Cannot reach backend server. Make sure it is running.';
+      const errMsg = error.message || 'Cannot reach backend server. Make sure it is running.';
       if (Platform.OS === 'web') {
-        window.alert(connMsg);
+        window.alert(errMsg);
       } else {
-        Alert.alert('Connection Error', connMsg);
+        Alert.alert('Verification Failed', errMsg);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -114,7 +100,6 @@ export default function OtpScreen({ navigation, route }) {
   };
 
   const handleKeyPress = ({ nativeEvent }, index) => {
-    // Auto-go back to previous input if backspace is pressed on an empty box
     if (nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs.current[index - 1].focus();
     }
@@ -168,7 +153,7 @@ export default function OtpScreen({ navigation, route }) {
                         ref={(ref) => (inputRefs.current[index] = ref)}
                         style={[
                           styles.otpBox,
-                          digit !== '' && styles.otpBoxActive // Highlights green when filled
+                          digit !== '' && styles.otpBoxActive
                         ]}
                         value={digit}
                         onChangeText={(text) => handleOtpChange(text, index)}
@@ -205,8 +190,9 @@ export default function OtpScreen({ navigation, route }) {
                   {/* Gradient Submit Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={styles.submitButtonWrapper}
+                    style={[styles.submitButtonWrapper, isLoading && { opacity: 0.7 }]}
                     onPress={handleVerifyOtp}
+                    disabled={isLoading}
                   >
                     <LinearGradient
                       colors={['#0df269', '#0be361', '#09d45a']}
@@ -214,7 +200,7 @@ export default function OtpScreen({ navigation, route }) {
                       end={{ x: 1, y: 0 }}
                       style={styles.submitButton}
                     >
-                      <Text style={styles.submitButtonText}>Verify</Text>
+                      <Text style={styles.submitButtonText}>{isLoading ? 'Verifying...' : 'Verify'}</Text>
                       <MaterialIcons name="send" size={20} color="#102217" />
                     </LinearGradient>
                   </TouchableOpacity>
@@ -222,7 +208,7 @@ export default function OtpScreen({ navigation, route }) {
                   {/* Resend Code Link */}
                   <View style={styles.resendContainer}>
                     <Text style={styles.resendText}>Didn't receive the code? </Text>
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
                       <Text style={styles.resendLink}>Resend Code</Text>
                     </TouchableOpacity>
                   </View>
@@ -248,4 +234,3 @@ export default function OtpScreen({ navigation, route }) {
     </View>
   );
 }
-
