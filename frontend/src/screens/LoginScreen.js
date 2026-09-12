@@ -11,7 +11,8 @@ import {
   Keyboard,
   ScrollView,
   Alert,
-  StyleSheet
+  StyleSheet,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; 
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
@@ -19,8 +20,9 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
-import { loginUser } from '../services/api';
+import { loginUser, oauthLogin } from '../services/api';
 import { styles } from "../styles/LoginStyles";
+import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
 
 // Completes the authentication routing redirect loop properly back onto mobile screens
 WebBrowser.maybeCompleteAuthSession();
@@ -36,6 +38,8 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync()
@@ -43,50 +47,59 @@ export default function LoginScreen({ navigation }) {
       .catch(() => setIsAppleAvailable(false));
   }, []);
 
-  // Configure Client IDs from your Google Cloud Console registry credentials
+  // Configure Client IDs from centralized authConfig
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com',
-    iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com',
-    webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+    androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
+    iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
+    webClientId: GOOGLE_AUTH_CONFIG.webClientId,
+    scopes: ['openid', 'profile', 'email'],
+    extraParams: {
+      prompt: 'select_account',
+    },
   });
 
   // Listen for active Google session authorization success responses
   useEffect(() => {
     if (response?.type === 'success') {
-      const { id_token, access_token } = response.authentication;
-      handleBackendOAuth('google', id_token, access_token);
+      const authObj = response.authentication || {};
+      const paramsObj = response.params || {};
+
+      const idToken = authObj.idToken || authObj.id_token || paramsObj.id_token || paramsObj.idToken || null;
+      const accessToken = authObj.accessToken || authObj.access_token || paramsObj.access_token || paramsObj.accessToken || null;
+
+      handleBackendOAuth('google', idToken, accessToken);
     }
   }, [response]);
 
   // Handshake function communicating provider identity keys down to FastAPI
   const handleBackendOAuth = async (provider, idToken, accessToken) => {
+    setIsOAuthLoading(true);
     try {
-      const apiResponse = await fetch('http://127.0.0.1:8000/api/auth/oauth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider: provider,
-          id_token: idToken,
-          access_token: accessToken
-        }),
-      });
-
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'OAuth authorization handshake failed.');
-      }
-
-      const data = await apiResponse.json();
+      const data = await oauthLogin(provider, idToken, accessToken);
       navigation.navigate('Planner', { user: data.user });
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
+      const msg = error.message || `${provider} authentication failed.`;
       if (Platform.OS === 'web') {
-        window.alert(error.message || 'Social Authentication failed.');
+        window.alert(msg);
       } else {
-        Alert.alert('Authentication Failed', error.message || 'Social Authentication failed.');
+        Alert.alert('Authentication Failed', msg);
       }
+    } finally {
+      setIsOAuthLoading(false);
+    }
+  };
+
+  const handleGooglePress = () => {
+    // If the webClientId is still the default placeholder, automatically
+    // authenticate in dev mode using the typed email or developer default
+    if (GOOGLE_AUTH_CONFIG.webClientId.includes('YOUR_WEB_CLIENT_ID')) {
+      const targetEmail = email.trim() && validateEmailInline(email.trim()) 
+        ? email.trim() 
+        : GOOGLE_AUTH_CONFIG.developerEmail;
+      handleBackendOAuth('google', 'mock_google_token', targetEmail);
+    } else {
+      promptAsync();
     }
   };
 
@@ -102,12 +115,15 @@ export default function LoginScreen({ navigation }) {
       else Alert.alert('Invalid Email', 'Please enter a valid email structure.');
       return;
     }
+    setIsLoading(true);
     try {
       const response = await loginUser({ email: trimmedEmail, password });
       navigation.navigate('Planner', { user: response.user });
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Login failed.');
       else Alert.alert('Login Failed', error.message || 'Login failed.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -147,9 +163,15 @@ export default function LoginScreen({ navigation }) {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-                <Text style={styles.loginButtonText}>Sign In</Text>
-                <MaterialIcons name="arrow-forward" size={22} color="#102217" />
+              <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={isLoading || isOAuthLoading}>
+                {isLoading ? (
+                  <ActivityIndicator color="#102217" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.loginButtonText}>Sign In</Text>
+                    <MaterialIcons name="arrow-forward" size={22} color="#102217" />
+                  </>
+                )}
               </TouchableOpacity>
 
               {/* Social Login Divider Grid Row */}
@@ -159,7 +181,7 @@ export default function LoginScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', gap: 16 }}>
                   {/* Google Login Button */}
                   <TouchableOpacity 
-                    disabled={!request}
+                    disabled={isOAuthLoading || isLoading}
                     style={{ 
                       backgroundColor: 'rgba(255,255,255,0.08)', 
                       paddingVertical: 12, 
@@ -167,15 +189,23 @@ export default function LoginScreen({ navigation }) {
                       borderRadius: 25, 
                       flexDirection: 'row',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       height: 48,
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.15)',
-                      gap: 10
+                      gap: 10,
+                      opacity: (isOAuthLoading || isLoading) ? 0.7 : 1
                     }} 
-                    onPress={() => promptAsync()}
+                    onPress={handleGooglePress}
                   >
-                    <FontAwesome name="google" size={18} color="#db4437" />
-                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>Google</Text>
+                    {isOAuthLoading ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <>
+                        <FontAwesome name="google" size={18} color="#db4437" />
+                        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>Google</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
 
                   {/* Apple Login Button */}

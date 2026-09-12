@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -11,13 +11,20 @@ import {
   Keyboard,
   ScrollView,
   Alert,
-  StyleSheet
+  StyleSheet,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient'; 
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
-import { signUpUser } from '../services/api';
+import { signUpUser, oauthLogin } from '../services/api';
 import { styles } from "../styles/SignUpStyles";
+import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Self-contained inline utility functions to eliminate folder resolution crashes
 const validateEmailInline = (text) => {
@@ -47,6 +54,68 @@ export default function SignUpScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    AppleAuthentication.isAvailableAsync()
+      .then(val => setIsAppleAvailable(val))
+      .catch(() => setIsAppleAvailable(false));
+  }, []);
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
+    iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
+    webClientId: GOOGLE_AUTH_CONFIG.webClientId,
+    scopes: ['openid', 'profile', 'email'],
+    extraParams: {
+      prompt: 'select_account',
+    },
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const authObj = response.authentication || {};
+      const paramsObj = response.params || {};
+
+      const idToken = authObj.idToken || authObj.id_token || paramsObj.id_token || paramsObj.idToken || null;
+      const accessToken = authObj.accessToken || authObj.access_token || paramsObj.access_token || paramsObj.accessToken || null;
+
+      handleBackendOAuth('google', idToken, accessToken);
+    }
+  }, [response]);
+
+  const handleBackendOAuth = async (provider, idToken, accessToken) => {
+    setIsOAuthLoading(true);
+    try {
+      const data = await oauthLogin(provider, idToken, accessToken);
+      navigation.navigate('Planner', { user: data.user });
+    } catch (error) {
+      console.error(`${provider} OAuth Handshake Error:`, error);
+      const msg = error.message || `${provider} authentication failed.`;
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Authentication Failed', msg);
+      }
+    } finally {
+      setIsOAuthLoading(false);
+    }
+  };
+
+  const handleGooglePress = () => {
+    // If the webClientId is still the default placeholder, automatically
+    // authenticate in dev mode using the typed email or developer default
+    if (GOOGLE_AUTH_CONFIG.webClientId.includes('YOUR_WEB_CLIENT_ID')) {
+      const targetEmail = email.trim() && validateEmailInline(email.trim()) 
+        ? email.trim() 
+        : GOOGLE_AUTH_CONFIG.developerEmail;
+      handleBackendOAuth('google', 'mock_google_token', targetEmail);
+    } else {
+      promptAsync();
+    }
+  };
 
   const handleSignUp = async () => {
     const trimmedEmail = email.trim();
@@ -91,6 +160,7 @@ export default function SignUpScreen({ navigation }) {
     }
 
     try {
+      setIsLoading(true);
       await signUpUser({
         name: trimmedFullName,
         email: trimmedEmail,
@@ -105,6 +175,8 @@ export default function SignUpScreen({ navigation }) {
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Registration failed.');
       else Alert.alert('Registration Failed', error.message || 'Registration failed.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -169,10 +241,104 @@ export default function SignUpScreen({ navigation }) {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp}>
-                <Text style={styles.signUpButtonText}>Create Account</Text>
-                <MaterialIcons name="arrow-forward" size={22} color="#102217" />
+              <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp} disabled={isLoading || isOAuthLoading}>
+                {isLoading ? (
+                  <ActivityIndicator color="#102217" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.signUpButtonText}>Create Account</Text>
+                    <MaterialIcons name="arrow-forward" size={22} color="#102217" />
+                  </>
+                )}
               </TouchableOpacity>
+
+              {/* Social Signup Divider Grid Row */}
+              <View style={{ marginVertical: 20, alignItems: 'center' }}>
+                <Text style={{ color: 'rgba(255,255,255,0.4)', marginBottom: 15 }}>Or sign up with</Text>
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', gap: 16 }}>
+                  {/* Google Login Button */}
+                  <TouchableOpacity 
+                    disabled={isOAuthLoading || isLoading}
+                    style={{ 
+                      backgroundColor: 'rgba(255,255,255,0.08)', 
+                      paddingVertical: 12, 
+                      paddingHorizontal: 24, 
+                      borderRadius: 25, 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: 48,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.15)',
+                      gap: 10,
+                      opacity: (isOAuthLoading || isLoading) ? 0.7 : 1
+                    }} 
+                    onPress={handleGooglePress}
+                  >
+                    {isOAuthLoading ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <>
+                        <FontAwesome name="google" size={18} color="#db4437" />
+                        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>Google</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Apple Login Button */}
+                  {isAppleAvailable && Platform.OS === 'ios' ? (
+                    <AppleAuthentication.AppleAuthenticationButton
+                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      cornerRadius={25}
+                      style={{ width: 140, height: 48 }}
+                      onPress={async () => {
+                        try {
+                          const credential = await AppleAuthentication.signInAsync({
+                            requestedScopes: [
+                              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                              AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                            ],
+                          });
+                          handleBackendOAuth('apple', credential.identityToken, null);
+                        } catch (e) {
+                          if (e.code !== 'ERR_REQUEST_CANCELED') {
+                            Alert.alert('Apple Auth Error', e.message);
+                          }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity 
+                      style={{ 
+                        backgroundColor: 'rgba(255,255,255,0.08)', 
+                        paddingVertical: 12, 
+                        paddingHorizontal: 24, 
+                        borderRadius: 25, 
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        height: 48,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.15)',
+                        gap: 10
+                      }} 
+                      onPress={() => {
+                        const alertMsg = "Apple Sign-in is only supported on Apple iOS devices.";
+                        if (Platform.OS === 'web') {
+                          window.alert(alertMsg);
+                        } else {
+                          Alert.alert('Not Supported', alertMsg);
+                        }
+                      }}
+                    >
+                      <FontAwesome name="apple" size={18} color="#ffffff" />
+                      <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>Apple</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
             </View>
 
             <View style={styles.footer}>
@@ -182,7 +348,7 @@ export default function SignUpScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-          </ScrollView>
+            </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </View>

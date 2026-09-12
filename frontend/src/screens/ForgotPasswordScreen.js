@@ -12,14 +12,17 @@ import {
   Pressable,
   Keyboard,
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { requestPasswordReset } from '../services/api';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSendOtp = async () => {
     const emailClean = email.trim();
@@ -31,38 +34,25 @@ export default function ForgotPasswordScreen({ navigation }) {
       }
       return;
     }
+    setIsLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: emailClean }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        if (Platform.OS === 'web') {
-          window.alert('OTP code generated successfully. Please check your backend console logs!');
-        } else {
-          Alert.alert('OTP Generated', 'OTP code generated successfully. Please check your backend console logs!');
-        }
-        navigation.navigate('OtpScreen', { email: emailClean });
+      await requestPasswordReset(emailClean);
+      if (Platform.OS === 'web') {
+        window.alert('OTP code generated successfully. Please check your backend console logs!');
       } else {
-        const errMsg = data.detail || 'Reset password request failed.';
-        if (Platform.OS === 'web') {
-          window.alert(errMsg);
-        } else {
-          Alert.alert('Error', errMsg);
-        }
+        Alert.alert('OTP Generated', 'OTP code generated successfully. Please check your backend console logs!');
       }
+      navigation.navigate('OtpScreen', { email: emailClean });
     } catch (error) {
       console.error('Reset Password Error:', error);
-      const connMsg = 'Cannot reach backend server. Make sure it is running.';
+      const errMsg = error.message || 'Cannot reach backend server. Make sure it is running.';
       if (Platform.OS === 'web') {
-        window.alert(connMsg);
+        window.alert(errMsg);
       } else {
-        Alert.alert('Connection Error', connMsg);
+        Alert.alert('Error', errMsg);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -140,6 +130,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                     activeOpacity={0.8}
                     style={styles.submitButtonWrapper}
                     onPress={handleSendOtp}
+                    disabled={isLoading}
                   >
                     <LinearGradient
                       colors={['#0df269', '#0be361', '#09d45a']}
@@ -147,8 +138,14 @@ export default function ForgotPasswordScreen({ navigation }) {
                       end={{ x: 1, y: 0 }}
                       style={styles.submitButton}
                     >
-                      <Text style={styles.submitButtonText}>Send OTP</Text>
-                      <MaterialIcons name="send" size={20} color="#102217" />
+                      {isLoading ? (
+                        <ActivityIndicator color="#102217" size="small" />
+                      ) : (
+                        <>
+                          <Text style={styles.submitButtonText}>Send OTP</Text>
+                          <MaterialIcons name="send" size={20} color="#102217" />
+                        </>
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>

@@ -12,11 +12,13 @@ import {
   Pressable,
   Keyboard,
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { verifyOtp } from '../services/api';
 
 const validatePasswordInline = (password) => {
   const errors = [];
@@ -37,6 +39,7 @@ export default function OtpScreen({ navigation, route }) {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   // Refs to automatically move focus between the 4 boxes
   const inputRefs = useRef([]);
 
@@ -67,38 +70,25 @@ export default function OtpScreen({ navigation, route }) {
     }
 
     const email = route.params?.email || '';
+    setIsLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/verify-otp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: email, token: otpCode, new_password: newPassword }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        if (Platform.OS === 'web') {
-          window.alert('Password reset and updated successfully! You can now log in.');
-        } else {
-          Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
-        }
-        navigation.navigate('Login');
+      await verifyOtp(email, otpCode, newPassword);
+      if (Platform.OS === 'web') {
+        window.alert('Password reset and updated successfully! You can now log in.');
       } else {
-        const errMsg = data.detail || 'OTP verification failed.';
-        if (Platform.OS === 'web') {
-          window.alert(errMsg);
-        } else {
-          Alert.alert('Verification Failed', errMsg);
-        }
+        Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
       }
+      navigation.navigate('Login');
     } catch (error) {
       console.error('OTP Verification Error:', error);
-      const connMsg = 'Cannot reach backend server. Make sure it is running.';
+      const errMsg = error.message || 'Cannot reach backend server. Make sure it is running.';
       if (Platform.OS === 'web') {
-        window.alert(connMsg);
+        window.alert(errMsg);
       } else {
-        Alert.alert('Connection Error', connMsg);
+        Alert.alert('Verification Failed', errMsg);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -207,6 +197,7 @@ export default function OtpScreen({ navigation, route }) {
                     activeOpacity={0.8}
                     style={styles.submitButtonWrapper}
                     onPress={handleVerifyOtp}
+                    disabled={isLoading}
                   >
                     <LinearGradient
                       colors={['#0df269', '#0be361', '#09d45a']}
@@ -214,8 +205,14 @@ export default function OtpScreen({ navigation, route }) {
                       end={{ x: 1, y: 0 }}
                       style={styles.submitButton}
                     >
-                      <Text style={styles.submitButtonText}>Verify</Text>
-                      <MaterialIcons name="send" size={20} color="#102217" />
+                      {isLoading ? (
+                        <ActivityIndicator color="#102217" size="small" />
+                      ) : (
+                        <>
+                          <Text style={styles.submitButtonText}>Verify</Text>
+                          <MaterialIcons name="send" size={20} color="#102217" />
+                        </>
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
 

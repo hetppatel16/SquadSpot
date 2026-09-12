@@ -84,7 +84,90 @@ export async function loginUser(credentials) {
 }
 
 /**
- * 3. Fetch Generated Itinerary Itinerary from Backend Pipeline
+ * 3. OAuth Authentication (Google / Apple)
+ */
+export async function oauthLogin(provider, idToken, accessToken = null) {
+  try {
+    const response = await fetch(`${BASE_URL}/api/auth/oauth`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider: provider,
+        id_token: idToken,
+        access_token: accessToken,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `${provider} authorization failed.`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`${provider} OAuth API Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * 4. Password Reset - Request OTP
+ */
+export async function requestPasswordReset(email) {
+  try {
+    const response = await fetch(`${BASE_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Reset password request failed.');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Request Password Reset Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 5. Password Reset - Verify OTP & Update Password
+ */
+export async function verifyOtp(email, token, newPassword) {
+  try {
+    const response = await fetch(`${BASE_URL}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email,
+        token: token,
+        new_password: newPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'OTP verification failed.');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Verify OTP Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 6. Fetch Generated Itinerary from Backend Pipeline
  */
 export async function fetchItinerary(userContext) {
   try {
