@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
@@ -18,7 +17,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { verifyOtp } from '../services/api';
+import { verifyOtpAndResetPassword } from '../services/api';
 
 const validatePasswordInline = (password) => {
   const errors = [];
@@ -35,12 +34,10 @@ const validatePasswordInline = (password) => {
 };
 
 export default function OtpScreen({ navigation, route }) {
-  // State to hold the 4 digits
   const [otp, setOtp] = useState(['', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  // Refs to automatically move focus between the 4 boxes
   const inputRefs = useRef([]);
 
   const handleVerifyOtp = async () => {
@@ -70,9 +67,9 @@ export default function OtpScreen({ navigation, route }) {
     }
 
     const email = route.params?.email || '';
-    setIsLoading(true);
     try {
-      await verifyOtp(email, otpCode, newPassword);
+      setIsLoading(true);
+      await verifyOtpAndResetPassword(email, otpCode, newPassword);
       if (Platform.OS === 'web') {
         window.alert('Password reset and updated successfully! You can now log in.');
       } else {
@@ -104,7 +101,6 @@ export default function OtpScreen({ navigation, route }) {
   };
 
   const handleKeyPress = ({ nativeEvent }, index) => {
-    // Auto-go back to previous input if backspace is pressed on an empty box
     if (nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs.current[index - 1].focus();
     }
@@ -158,7 +154,7 @@ export default function OtpScreen({ navigation, route }) {
                         ref={(ref) => (inputRefs.current[index] = ref)}
                         style={[
                           styles.otpBox,
-                          digit !== '' && styles.otpBoxActive // Highlights green when filled
+                          digit !== '' && styles.otpBoxActive
                         ]}
                         value={digit}
                         onChangeText={(text) => handleOtpChange(text, index)}
@@ -195,7 +191,7 @@ export default function OtpScreen({ navigation, route }) {
                   {/* Gradient Submit Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={styles.submitButtonWrapper}
+                    style={[styles.submitButtonWrapper, isLoading && { opacity: 0.7 }]}
                     onPress={handleVerifyOtp}
                     disabled={isLoading}
                   >
@@ -219,7 +215,7 @@ export default function OtpScreen({ navigation, route }) {
                   {/* Resend Code Link */}
                   <View style={styles.resendContainer}>
                     <Text style={styles.resendText}>Didn't receive the code? </Text>
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
                       <Text style={styles.resendLink}>Resend Code</Text>
                     </TouchableOpacity>
                   </View>
@@ -245,4 +241,3 @@ export default function OtpScreen({ navigation, route }) {
     </View>
   );
 }
-

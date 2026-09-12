@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
@@ -61,16 +60,10 @@ export default function ForgotPasswordScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
 
       {/* --- Abstract Background Elements --- */}
-      {/* Top Right Glow */}
       <View style={[styles.glowOrb, { top: '-10%', right: '-10%', opacity: 0.1 }]} />
-      {/* Bottom Left Glow */}
       <View style={[styles.glowOrb, { bottom: '-5%', left: '-5%', opacity: 0.05, width: 320, height: 320 }]} />
-
-      {/* Geometric Shape 1 */}
       <View style={styles.geoShape1} />
-      {/* Geometric Shape 2 */}
       <View style={styles.geoShape2} />
-
 
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
@@ -82,7 +75,6 @@ export default function ForgotPasswordScreen({ navigation }) {
 
               {/* Top Navigation */}
               <View style={styles.navContainer}>
-                {/* Using Expo Blur for the Glassmorphism Back Button */}
                 <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
                   <BlurView intensity={20} tint="dark" style={styles.backButton}>
                     <MaterialIcons name="arrow-back" size={24} color="#f1f5f9" />
@@ -108,7 +100,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                       <TextInput
                         style={styles.input}
                         placeholder="name@example.com"
-                        placeholderTextColor="#475569" // slate-600
+                        placeholderTextColor="#475569"
                         value={email}
                         onChangeText={setEmail}
                         keyboardType="email-address"
@@ -128,7 +120,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                   {/* Gradient Submit Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={styles.submitButtonWrapper}
+                    style={[styles.submitButtonWrapper, isLoading && { opacity: 0.7 }]}
                     onPress={handleSendOtp}
                     disabled={isLoading}
                   >
@@ -170,4 +162,3 @@ export default function ForgotPasswordScreen({ navigation }) {
     </View>
   );
 }
-

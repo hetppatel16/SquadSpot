@@ -21,6 +21,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 import { signUpUser, oauthLogin } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/SignUpStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
 
@@ -47,6 +48,7 @@ const validatePasswordInline = (password) => {
 };
 
 export default function SignUpScreen({ navigation }) {
+  const { login } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -90,7 +92,10 @@ export default function SignUpScreen({ navigation }) {
     setIsOAuthLoading(true);
     try {
       const data = await oauthLogin(provider, idToken, accessToken);
-      navigation.navigate('Planner', { user: data.user });
+      if (login) {
+        await login(data.user, data.token || null);
+      }
+      navigation.replace('Planner');
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;

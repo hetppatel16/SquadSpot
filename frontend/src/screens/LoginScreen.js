@@ -21,6 +21,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 import { loginUser, oauthLogin } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/LoginStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
 
@@ -34,6 +35,7 @@ const validateEmailInline = (text) => {
 };
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -76,7 +78,10 @@ export default function LoginScreen({ navigation }) {
     setIsOAuthLoading(true);
     try {
       const data = await oauthLogin(provider, idToken, accessToken);
-      navigation.navigate('Planner', { user: data.user });
+      if (login) {
+        await login(data.user, data.token || null);
+      }
+      navigation.replace('Planner');
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;
@@ -91,8 +96,6 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleGooglePress = () => {
-    // If the webClientId is still the default placeholder, automatically
-    // authenticate in dev mode using the typed email or developer default
     if (GOOGLE_AUTH_CONFIG.webClientId.includes('YOUR_WEB_CLIENT_ID')) {
       const targetEmail = email.trim() && validateEmailInline(email.trim()) 
         ? email.trim() 
@@ -118,7 +121,10 @@ export default function LoginScreen({ navigation }) {
     setIsLoading(true);
     try {
       const response = await loginUser({ email: trimmedEmail, password });
-      navigation.navigate('Planner', { user: response.user });
+      if (login) {
+        await login(response.user, response.token || null);
+      }
+      navigation.replace('Planner');
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Login failed.');
       else Alert.alert('Login Failed', error.message || 'Login failed.');
@@ -153,6 +159,9 @@ export default function LoginScreen({ navigation }) {
               <View style={styles.inputWrapper}>
                 <View style={styles.passwordLabelRow}>
                   <Text style={styles.label}>Password</Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />

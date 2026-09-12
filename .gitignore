@@ -1,45 +1,22 @@
-# SquadSpot ΓÇô ignore local env and generated/cache files
-# Copy .env.example to .env; never commit .env (secrets / local config)
+# Node / React Native / Expo
+node_modules/
+.expo/
+.expo-shared/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
 .env
+.env.example
 
-# -----------------------------------------------------------------------------
-# Python
-# -----------------------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-eggs/
-*.egg-info/
-*.egg
-
-# -----------------------------------------------------------------------------
-# Virtual environment (common folder names)
-# -----------------------------------------------------------------------------
-.venv/
-venv/
-env/
-
-# -----------------------------------------------------------------------------
-# IDE / editor
-# -----------------------------------------------------------------------------
+# IDE / Editor
 .idea/
 .vscode/
-*.swp
-*.swo
 
-# -----------------------------------------------------------------------------
-# Node modules
-# -----------------------------------------------------------------------------
-node_modules/
-
-# -----------------------------------------------------------------------------
-# Local database (optional: uncomment if you don't want to commit DB file)
-# -----------------------------------------------------------------------------
-# *.db
-# squadspot.db
-
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
