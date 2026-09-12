@@ -19,23 +19,25 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
-import { loginUser } from '../services/api';
+import { loginUser, oauthLogin } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/LoginStyles";
 
 // Completes the authentication routing redirect loop properly back onto mobile screens
 WebBrowser.maybeCompleteAuthSession();
 
-// Local inline utility function to completely avoid file import bugs
 const validateEmailInline = (text) => {
   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return regex.test(text);
 };
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync()
@@ -58,35 +60,22 @@ export default function LoginScreen({ navigation }) {
     }
   }, [response]);
 
-  // Handshake function communicating provider identity keys down to FastAPI
   const handleBackendOAuth = async (provider, idToken, accessToken) => {
     try {
-      const apiResponse = await fetch('http://127.0.0.1:8000/api/auth/oauth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider: provider,
-          id_token: idToken,
-          access_token: accessToken
-        }),
-      });
-
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'OAuth authorization handshake failed.');
-      }
-
-      const data = await apiResponse.json();
-      navigation.navigate('Planner', { user: data.user });
+      setIsSubmitting(true);
+      const data = await oauthLogin(provider, idToken, accessToken);
+      await login(data.user, data.token || null);
+      navigation.replace('Planner');
     } catch (error) {
-      console.error(`${provider} OAuth Handshake Error:`, error);
+      console.error(`${provider} OAuth Error:`, error);
+      const msg = error.message || 'Social Authentication failed.';
       if (Platform.OS === 'web') {
-        window.alert(error.message || 'Social Authentication failed.');
+        window.alert(msg);
       } else {
-        Alert.alert('Authentication Failed', error.message || 'Social Authentication failed.');
+        Alert.alert('Authentication Failed', msg);
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -103,11 +92,15 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     try {
+      setIsSubmitting(true);
       const response = await loginUser({ email: trimmedEmail, password });
-      navigation.navigate('Planner', { user: response.user });
+      await login(response.user, response.token || null);
+      navigation.replace('Planner');
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Login failed.');
       else Alert.alert('Login Failed', error.message || 'Login failed.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -137,6 +130,9 @@ export default function LoginScreen({ navigation }) {
               <View style={styles.inputWrapper}>
                 <View style={styles.passwordLabelRow}>
                   <Text style={styles.label}>Password</Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                    <Text style={{ color: '#0df269', fontSize: 13, fontWeight: '500' }}>Forgot?</Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
@@ -147,8 +143,8 @@ export default function LoginScreen({ navigation }) {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-                <Text style={styles.loginButtonText}>Sign In</Text>
+              <TouchableOpacity style={[styles.loginButton, isSubmitting && { opacity: 0.7 }]} onPress={handleLogin} disabled={isSubmitting}>
+                <Text style={styles.loginButtonText}>{isSubmitting ? 'Signing In...' : 'Sign In'}</Text>
                 <MaterialIcons name="arrow-forward" size={22} color="#102217" />
               </TouchableOpacity>
 
@@ -159,7 +155,7 @@ export default function LoginScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', gap: 16 }}>
                   {/* Google Login Button */}
                   <TouchableOpacity 
-                    disabled={!request}
+                    disabled={!request || isSubmitting}
                     style={{ 
                       backgroundColor: 'rgba(255,255,255,0.08)', 
                       paddingVertical: 12, 
