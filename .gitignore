@@ -1,7 +1,14 @@
 # Node / React Native / Expo
 node_modules/
+**/node_modules/
+.expo
 .expo/
+**/.expo
+**/.expo/**
+.expo-shared
 .expo-shared/
+**/.expo-shared
+**/.expo-shared/**
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
