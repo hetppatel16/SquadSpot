@@ -11,7 +11,8 @@ import {
   Pressable,
   Keyboard,
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,8 +33,8 @@ export default function ForgotPasswordScreen({ navigation }) {
       }
       return;
     }
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       await requestPasswordReset(emailClean);
       if (Platform.OS === 'web') {
         window.alert('OTP code generated successfully. Please check your backend console logs!');
@@ -129,8 +130,14 @@ export default function ForgotPasswordScreen({ navigation }) {
                       end={{ x: 1, y: 0 }}
                       style={styles.submitButton}
                     >
-                      <Text style={styles.submitButtonText}>{isLoading ? 'Sending...' : 'Send OTP'}</Text>
-                      <MaterialIcons name="send" size={20} color="#102217" />
+                      {isLoading ? (
+                        <ActivityIndicator color="#102217" size="small" />
+                      ) : (
+                        <>
+                          <Text style={styles.submitButtonText}>Send OTP</Text>
+                          <MaterialIcons name="send" size={20} color="#102217" />
+                        </>
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>

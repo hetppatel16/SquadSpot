@@ -11,7 +11,8 @@ import {
   Pressable,
   Keyboard,
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -200,8 +201,14 @@ export default function OtpScreen({ navigation, route }) {
                       end={{ x: 1, y: 0 }}
                       style={styles.submitButton}
                     >
-                      <Text style={styles.submitButtonText}>{isLoading ? 'Verifying...' : 'Verify'}</Text>
-                      <MaterialIcons name="send" size={20} color="#102217" />
+                      {isLoading ? (
+                        <ActivityIndicator color="#102217" size="small" />
+                      ) : (
+                        <>
+                          <Text style={styles.submitButtonText}>Verify</Text>
+                          <MaterialIcons name="send" size={20} color="#102217" />
+                        </>
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
 

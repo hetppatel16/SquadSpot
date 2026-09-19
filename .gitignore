@@ -10,3 +10,13 @@ pnpm-debug.log*
 # Environment variables
 .env
 .env.example
+
+# IDE / Editor
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

@@ -101,7 +101,7 @@ export async function oauthLogin(provider, idToken, accessToken = null) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'OAuth authorization failed.');
+      throw new Error(errorData.detail || `${provider} authorization failed.`);
     }
 
     return await response.json();
@@ -164,6 +164,9 @@ export async function verifyOtpAndResetPassword(email, token, newPassword) {
     throw error;
   }
 }
+
+// Alias for backwards compatibility
+export const verifyOtp = verifyOtpAndResetPassword;
 
 /**
  * 6. Fetch Generated Itinerary from Backend Pipeline

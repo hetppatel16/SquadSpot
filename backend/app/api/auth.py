@@ -95,21 +95,12 @@ async def login(payload: LoginRequest):
         user_metadata = getattr(auth_response.user, "user_metadata", {}) or {}
         full_name = user_metadata.get("full_name", email.split("@")[0] if email else "User")
 
-        # Sync user profile to relational users table
-        profile_row = {
-            "id": user_id,
-            "full_name": full_name,
-            "email": email
-        }
-        supabase.table("users").upsert(profile_row).execute()
+        # Sync user profile safely without duplicate key violations
+        profile_data = sync_user_profile(user_id, email, full_name)
 
         return {
             "status": "success",
-            "user": {
-                "id": user_id,
-                "email": email,
-                "full_name": full_name
-            }
+            "user": profile_data
         }
     except Exception as error:
         print("Login Exception:", str(error))
@@ -119,53 +110,104 @@ async def login(payload: LoginRequest):
         raise HTTPException(status_code=400, detail=error_msg)
 
 
+def sync_user_profile(user_id: str, email: str, full_name: str) -> dict:
+    """
+    Safely synchronizes user profile into the relational 'users' table,
+    handling existing email records gracefully to prevent duplicate key constraint violations.
+    """
+    email_clean = email.strip().lower() if email else ""
+    try:
+        existing = supabase.table("users").select("*").eq("email", email_clean).execute()
+        if existing.data and len(existing.data) > 0:
+            target_id = existing.data[0]["id"]
+            final_name = full_name or existing.data[0].get("full_name") or (email_clean.split("@")[0] if email_clean else "User")
+            try:
+                supabase.table("users").update({"full_name": final_name}).eq("id", target_id).execute()
+            except Exception as update_err:
+                print("Notice updating existing user profile:", update_err)
+            return {"id": str(target_id), "email": email_clean, "full_name": final_name}
+        else:
+            profile = {"id": str(user_id), "email": email_clean, "full_name": full_name}
+            supabase.table("users").insert(profile).execute()
+            return profile
+    except Exception as e:
+        print("User profile sync notice:", e)
+        return {"id": str(user_id), "email": email_clean, "full_name": full_name}
+
+
 # Schema for checking incoming cross-platform payload shapes
 class OAuthLoginRequest(BaseModel):
     provider: str  # "google" or "apple"
-    id_token: str
+    id_token: Optional[str] = None
     access_token: Optional[str] = None
 
 @router.post("/auth/oauth")
 async def oauth_login(payload: OAuthLoginRequest):
     """
     Receives secure validation tokens from frontend native runtime environments,
-    validates the session against Supabase Auth, and upserts user data rows.
+    validates the session against Supabase Auth or provider userinfo endpoints,
+    and upserts user data rows into the database safely.
     """
     try:
-        # Pass the ID token directly to Supabase authentication client managers
-        auth_response = supabase.auth.sign_in_with_id_token({
-            "provider": payload.provider,
-            "id_token": payload.id_token,
-            "access_token": payload.access_token
-        })
-        
-        if not auth_response or not auth_response.user:
-            raise HTTPException(status_code=400, detail="Authentication signature rejected by cloud provider.")
-
-        user_id = auth_response.user.id
-        email = auth_response.user.email
-        
-        # Safely extract full names from provider maps, defaulting to the email prefix string
-        user_metadata = getattr(auth_response.user, "user_metadata", {}) or {}
-        full_name = user_metadata.get("full_name", email.split("@")[0] if email else "OAuth User")
-        
-        profile_row = {
-            "id": user_id, 
-            "full_name": full_name, 
-            "email": email
-        }
-        
-        # Keep internal application relational tables synced smoothly with an upsert
-        supabase.table("users").upsert(profile_row).execute()
-        
-        return {
-            "status": "success", 
-            "user": {
-                "id": user_id, 
-                "email": email, 
-                "full_name": full_name
+        # 1. Development / Offline bypass mode support
+        if payload.id_token and (payload.id_token.startswith("mock_") or payload.id_token.startswith("dev_")):
+            email = payload.access_token or "dhairyasoni997@gmail.com"
+            full_name = email.split("@")[0].replace(".", " ").title()
+            import uuid
+            user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
+            profile_data = sync_user_profile(user_id, email, full_name)
+            return {
+                "status": "success",
+                "user": profile_data
             }
-        }
+
+        # 2. Try Supabase sign_in_with_id_token if id_token is provided
+        if payload.id_token:
+            try:
+                auth_response = supabase.auth.sign_in_with_id_token({
+                    "provider": payload.provider,
+                    "id_token": payload.id_token,
+                    "access_token": payload.access_token
+                })
+                if auth_response and auth_response.user:
+                    user_id = auth_response.user.id
+                    email = auth_response.user.email
+                    user_metadata = getattr(auth_response.user, "user_metadata", {}) or {}
+                    full_name = user_metadata.get("full_name", email.split("@")[0] if email else "Google User")
+                    profile_data = sync_user_profile(user_id, email, full_name)
+                    return {
+                        "status": "success",
+                        "user": profile_data
+                    }
+            except Exception as e:
+                print("Supabase ID token verification notice:", e)
+
+        # 3. Fallback: Verify with Google Userinfo API via access_token
+        if payload.provider == "google" and payload.access_token:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                google_res = await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {payload.access_token}"}
+                )
+            if google_res.status_code == 200:
+                google_user = google_res.json()
+                email = google_user.get("email")
+                full_name = google_user.get("name") or (email.split("@")[0] if email else "Google User")
+                import uuid
+                user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, email or google_user.get("sub", "")))
+                profile_data = sync_user_profile(user_id, email, full_name)
+                return {
+                    "status": "success",
+                    "user": profile_data
+                }
+            else:
+                raise HTTPException(status_code=400, detail="Failed to fetch user profile from Google.")
+
+        raise HTTPException(status_code=400, detail="Authentication signature rejected. Please try again.")
+
+    except HTTPException:
+        raise
     except Exception as error:
         print("OAuth Security Interceptor Exception:", str(error))
         raise HTTPException(status_code=400, detail=f"Handshake failed: {str(error)}")
