@@ -10,8 +10,11 @@ export const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 60, // <--- CHANGED: Increased from default to 60 (Pushes everything down)
-    paddingBottom: 120, // Adds space at bottom so content doesn't get hidden behind the floating button
+    paddingTop: 60,
+    paddingBottom: 120,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -135,6 +138,18 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
   },
+  durationHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  durationValueBadge: {
+    color: '#0df269',
+    fontSize: 13,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
   durationText: {
     color: 'rgba(255,255,255,0.4)',
     fontWeight: '600',
@@ -176,10 +191,14 @@ export const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     bottom: 30,
-    left: 20,
-    right: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   planButton: {
+    width: '100%',
+    maxWidth: 520,
     backgroundColor: '#0df269',
     height: 60,
     borderRadius: 30,

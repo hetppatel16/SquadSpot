@@ -27,7 +27,9 @@
     "owner": "ansh-mistrys-organization",
     "plugins": [
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-font"
     ]
   }
 }

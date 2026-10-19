@@ -184,14 +184,23 @@ export async function fetchItinerary(userContext) {
     };
     const preferences = (userContext.selectedVibes || []).map(id => vibeMap[id]).filter(Boolean);
 
-    // Map duration strings to total time in minutes
+    // Map duration strings or numbers to total time in minutes
     let durationMinutes = 240; // Default to 4 hours
-    if (userContext.duration === 'Few Hrs') {
-      durationMinutes = 120;
-    } else if (userContext.duration === 'Half Day') {
-      durationMinutes = 240;
-    } else if (userContext.duration === 'Full Day') {
-      durationMinutes = 480;
+    if (typeof userContext.duration === 'number') {
+      durationMinutes = Math.round(userContext.duration * 60);
+    } else if (typeof userContext.duration === 'string') {
+      if (userContext.duration === 'Few Hrs') {
+        durationMinutes = 120;
+      } else if (userContext.duration === 'Half Day') {
+        durationMinutes = 240;
+      } else if (userContext.duration === 'Full Day') {
+        durationMinutes = 480;
+      } else {
+        const parsedHours = parseFloat(userContext.duration);
+        if (!isNaN(parsedHours) && parsedHours > 0) {
+          durationMinutes = Math.round(parsedHours * 60);
+        }
+      }
     }
 
     const response = await fetch(API_ENDPOINTS.ITINERARY, {

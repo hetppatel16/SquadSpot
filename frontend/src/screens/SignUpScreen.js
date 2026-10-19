@@ -24,6 +24,7 @@ import { signUpUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/SignUpStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
+import ResponsiveContainer from '../components/ResponsiveContainer';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -193,8 +194,8 @@ export default function SignUpScreen({ navigation }) {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <TouchableWithoutFeedback onPress={Platform.OS === 'web' ? null : Keyboard.dismiss}>
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
-            <View style={styles.headerContainer}>
+            <ResponsiveContainer>
+              <View style={styles.headerContainer}>
               <Text style={styles.title}>Create Account</Text>
               <Text style={styles.subtitle}>Join SquadSpot to start planning</Text>
             </View>
@@ -352,6 +353,7 @@ export default function SignUpScreen({ navigation }) {
                 <Text style={styles.logInText}>Sign In</Text>
               </TouchableOpacity>
             </View>
+            </ResponsiveContainer>
 
             </ScrollView>
         </TouchableWithoutFeedback>

@@ -20,6 +20,16 @@ import { useAuth } from '../context/AuthContext';
 import { getJsonItem, setJsonItem, STORAGE_KEYS } from '../utils/storage';
 import { styles } from '../styles/PlannerStyles';
 import { validateBudget } from '../utils/Validations';
+import CustomSlider from '../components/CustomSlider';
+
+const parseDurationHours = (val) => {
+  if (typeof val === 'number') return val;
+  if (val === 'Few Hrs' || val === '2h') return 2;
+  if (val === 'Half Day' || val === '4h') return 4;
+  if (val === 'Full Day' || val === 'Full' || val === '8h') return 8;
+  const num = parseInt(val, 10);
+  return isNaN(num) ? 4 : num;
+};
 
 export default function PlannerScreen({ navigation, route }) {
   const { user, logout } = useAuth();
@@ -44,7 +54,7 @@ export default function PlannerScreen({ navigation, route }) {
   const [budget, setBudget] = useState('2500');
   const [people, setPeople] = useState(5);
   const [selectedVibes, setSelectedVibes] = useState([]);
-  const [duration, setDuration] = useState('Half Day');
+  const [duration, setDuration] = useState(4);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Restore last selected preferences on launch
@@ -56,7 +66,7 @@ export default function PlannerScreen({ navigation, route }) {
         if (saved.budget) setBudget(saved.budget);
         if (saved.people) setPeople(saved.people);
         if (saved.selectedVibes) setSelectedVibes(saved.selectedVibes);
-        if (saved.duration) setDuration(saved.duration);
+        if (saved.duration !== undefined) setDuration(parseDurationHours(saved.duration));
       }
     }
     loadSavedDraft();
@@ -273,20 +283,22 @@ export default function PlannerScreen({ navigation, route }) {
 
             {/* Duration */}
             <View style={[styles.halfCard, { marginLeft: 8 }]}>
-              <Text style={styles.cardLabel}>Duration</Text>
-              <View style={styles.durationSelector}>
-                <TouchableOpacity onPress={() => { setDuration('Few Hrs'); persistDraft({ duration: 'Few Hrs' }); }}>
-                  <Text style={[styles.durationText, duration === 'Few Hrs' && styles.activeDuration]}>2h</Text>
-                </TouchableOpacity>
-                <View style={styles.verticalLine} />
-                <TouchableOpacity onPress={() => { setDuration('Half Day'); persistDraft({ duration: 'Half Day' }); }}>
-                  <Text style={[styles.durationText, duration === 'Half Day' && styles.activeDuration]}>4h</Text>
-                </TouchableOpacity>
-                <View style={styles.verticalLine} />
-                <TouchableOpacity onPress={() => { setDuration('Full Day'); persistDraft({ duration: 'Full Day' }); }}>
-                  <Text style={[styles.durationText, duration === 'Full Day' && styles.activeDuration]}>Full</Text>
-                </TouchableOpacity>
+              <View style={styles.durationHeaderRow}>
+                <Text style={[styles.cardLabel, { marginBottom: 0 }]}>Duration</Text>
+                <Text style={styles.durationValueBadge}>{duration} hrs</Text>
               </View>
+              <CustomSlider
+                min={1}
+                max={12}
+                step={1}
+                value={duration}
+                onValueChange={(val) => {
+                  setDuration(val);
+                  persistDraft({ duration: val });
+                }}
+                ticks={[1, 4, 8, 12]}
+                tickLabels={['1h', '4h', '8h', '12h']}
+              />
             </View>
           </View>
 

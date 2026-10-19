@@ -3,7 +3,7 @@
  * Reads from EXPO_PUBLIC_API_URL in .env
  */
 
-const rawUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.29.54:8000';
+const rawUrl = process.env.EXPO_PUBLIC_API_URL;
 
 // Strip any trailing slashes for consistent endpoint path concatenation
 export const API_BASE_URL = rawUrl.replace(/\/+$/, '');

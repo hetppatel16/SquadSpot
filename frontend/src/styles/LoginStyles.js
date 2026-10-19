@@ -143,4 +143,18 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
+  headerContainer: {
+    marginBottom: 32,
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 4,
+  },
+  forgotPasswordText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
 });
