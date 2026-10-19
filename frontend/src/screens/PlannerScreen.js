@@ -19,10 +19,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import { getJsonItem, setJsonItem, STORAGE_KEYS } from '../utils/storage';
 import { styles } from '../styles/PlannerStyles';
+import { validateBudget } from '../utils/Validations';
 
 export default function PlannerScreen({ navigation, route }) {
   const { user, logout } = useAuth();
-  
+
   // Prefer context user, fallback to route param or default
   const activeUser = user || route?.params?.user;
   const fullName = activeUser?.full_name || 'Squad Member';
@@ -169,7 +170,7 @@ export default function PlannerScreen({ navigation, route }) {
                 Hey {fullName.split(' ')[0]} 👋
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.profileButton}
               onPress={() => setShowProfileModal(true)}
               activeOpacity={0.8}
@@ -332,6 +333,17 @@ export default function PlannerScreen({ navigation, route }) {
                 else Alert.alert('City Required', 'Please choose a city before planning your trip.');
                 return;
               }
+              if (!validateBudget(budget)) {
+                const message = 'Please enter a valid budget greater than ₹0.';
+
+                if (Platform.OS === 'web') {
+                  window.alert(message);
+                } else {
+                  Alert.alert('Invalid Budget', message);
+                }
+
+                return;
+              }
               navigation.navigate('Loading', {
                 location: normalizedLocation,
                 budget: budget.trim(),
@@ -356,21 +368,21 @@ export default function PlannerScreen({ navigation, route }) {
         animationType="fade"
         onRequestClose={() => setShowProfileModal(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
           activeOpacity={1}
           onPress={() => setShowProfileModal(false)}
         >
-          <View 
-            style={{ 
-              width: '100%', 
-              maxWidth: 340, 
-              backgroundColor: '#15291f', 
-              borderRadius: 20, 
-              padding: 24, 
-              borderWidth: 1, 
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 340,
+              backgroundColor: '#15291f',
+              borderRadius: 20,
+              padding: 24,
+              borderWidth: 1,
               borderColor: 'rgba(13,242,105,0.3)',
-              alignItems: 'center' 
+              alignItems: 'center'
             }}
           >
             <View style={[styles.profileImagePlaceholder, { width: 64, height: 64, borderRadius: 32, marginBottom: 12 }]}>
