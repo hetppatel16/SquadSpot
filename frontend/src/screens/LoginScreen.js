@@ -24,6 +24,7 @@ import { loginUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/LoginStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
+import ResponsiveContainer from '../components/ResponsiveContainer';
 
 // Completes the authentication routing redirect loop properly back onto mobile screens
 WebBrowser.maybeCompleteAuthSession();
@@ -141,8 +142,8 @@ export default function LoginScreen({ navigation }) {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <TouchableWithoutFeedback onPress={Platform.OS === 'web' ? null : Keyboard.dismiss}>
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
-            <View style={styles.headerContainer}>
+            <ResponsiveContainer>
+              <View style={styles.headerContainer}>
               <Text style={styles.title}>SquadSpot</Text>
               <Text style={styles.subtitle}>Welcome back! Sign in to continue</Text>
             </View>
@@ -278,7 +279,7 @@ export default function LoginScreen({ navigation }) {
                 <Text style={styles.signUpText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
-
+            </ResponsiveContainer>
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>

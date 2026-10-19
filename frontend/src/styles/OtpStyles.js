@@ -13,6 +13,9 @@ export const styles = StyleSheet.create({
   },
   innerContainer: {
     flex: 1,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 24,
