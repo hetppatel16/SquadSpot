@@ -3,13 +3,16 @@ import { API_ENDPOINTS } from '../constants/config';
 /**
  * Search active cities from the backend.
  */
-export async function searchCities(searchText = '') {
+export async function searchCities(searchText = '', limit = null) {
   try {
     const search = searchText.trim();
 
-    const url = search
-      ? `${API_ENDPOINTS.CITIES}?search=${encodeURIComponent(search)}`
-      : API_ENDPOINTS.CITIES;
+    // limit: how many cities to return (backend default 50, max 100).
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (limit) params.set('limit', String(limit));
+    const query = params.toString();
+    const url = query ? `${API_ENDPOINTS.CITIES}?${query}` : API_ENDPOINTS.CITIES;
 
     const response = await fetch(url);
 
@@ -328,9 +331,13 @@ export async function fetchItinerary(userContext, accessToken) {
         total_time_minutes: durationMinutes,
         preferences: preferences,
         mood: selectedMood,
-        latitude: parseFloat(userContext.latitude) || 22.3072,
-        longitude: parseFloat(userContext.longitude) || 73.1812,
+        // "Use my location" sends the user's position; otherwise the backend
+        // plans from the city centre (Vadodara's coordinates are the default).
+        use_my_location: Boolean(userContext.userLocation),
+        latitude: userContext.userLocation?.latitude ?? 22.3072,
+        longitude: userContext.userLocation?.longitude ?? 73.1812,
         city: userContext.location || '',
+        start_time: userContext.startTime || undefined,
       }),
     });
 
@@ -367,7 +374,11 @@ function formatCostRange(low, high) {
 export function transformToPlan(apiResponse) {
   if (!apiResponse) return [];
 
-  const itineraries = Array.isArray(apiResponse) ? apiResponse : [apiResponse];
+  // The backend sends up to three alternative plans in `options` (best first);
+  // older responses had a single plan at the top level.
+  const itineraries = Array.isArray(apiResponse)
+    ? apiResponse
+    : (Array.isArray(apiResponse.options) && apiResponse.options.length ? apiResponse.options : [apiResponse]);
 
   return itineraries.map((plan, index) => {
     const rawStops = plan.timeline || plan.stops || plan.items || [];
@@ -400,6 +411,8 @@ export function transformToPlan(apiResponse) {
       totalEst: String(rawTotalCost),
       unknownCostCount,
       costDisplay,
+      optionLabel: plan.option_label || null,
+      startsFromUserLocation: Boolean(plan.starts_from_user_location),
       // Set when the plan runs longer than the hours the user chose.
       exceedsDuration: Boolean(plan.exceeds_duration),
       totalDurationMinutes: Number(plan.total_duration_minutes || 0),

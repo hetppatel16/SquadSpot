@@ -83,6 +83,29 @@ export const styles = StyleSheet.create({
   inputIcon: {
     marginRight: 12,
   },
+  myLocationButton: {
+    marginLeft: 12,
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.1)',
+    height: 32,
+    justifyContent: 'center',
+  },
+  locationNote: {
+    color: '#0df269',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  // Same look as halfCard, without flex (flex sizing collapses this card on web).
+  startTimeCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    marginTop: -24,
+    marginBottom: 40,
+  },
   textInput: {
     flex: 1,
     color: 'white',

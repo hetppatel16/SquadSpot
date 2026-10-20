@@ -10,6 +10,8 @@ import {
   SafeAreaView,
   Keyboard,
   Modal,
+  Platform,
+  ActivityIndicator,
   useWindowDimensions
 } from 'react-native';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -22,6 +24,17 @@ import { validateBudget } from '../utils/Validations';
 import { searchCities } from '../services/api';
 import CustomSlider from '../components/CustomSlider';
 import { confirmAction, notify } from '../utils/feedback';
+import StartTimePicker, { DEFAULT_START_TIME } from '../components/StartTimePicker';
+import { nearestCity } from '../utils/geo';
+
+// "Use my location" is web-only for now: browsers provide navigator.geolocation.
+// Mobile: install expo-location (`npx expo install expo-location`) and replace the
+// navigator.geolocation call in handleUseMyLocation with
+// Location.requestForegroundPermissionsAsync() + Location.getCurrentPositionAsync().
+const CAN_USE_MY_LOCATION = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!navigator.geolocation;
+// Must match USER_START_MAX_KM in the backend's itinerary_service.py.
+const USER_START_MAX_KM = 50;
+const ALL_CITIES_LIMIT = 100;
 
 // At this width (desktop browsers, tablets in landscape) the form is shown in
 // two columns with the Plan button below it; narrower screens keep the
@@ -69,6 +82,11 @@ export default function PlannerScreen({ navigation, route }) {
   const [people, setPeople] = useState(5);
   const [selectedVibes, setSelectedVibes] = useState([]);
   const [duration, setDuration] = useState(4);
+  const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
+  // The user's position from "Use my location"; null when they typed or picked a city.
+  // Not saved with the draft, so a stale position is never reused.
+  const [userLocation, setUserLocation] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileNameDraft, setProfileNameDraft] = useState('');
@@ -84,6 +102,7 @@ export default function PlannerScreen({ navigation, route }) {
         if (saved.people) setPeople(saved.people);
         if (saved.selectedVibes) setSelectedVibes(saved.selectedVibes);
         if (saved.duration !== undefined) setDuration(parseDurationHours(saved.duration));
+        if (saved.startTime) setStartTime(saved.startTime);
       }
     }
     loadSavedDraft();
@@ -142,6 +161,7 @@ export default function PlannerScreen({ navigation, route }) {
       people,
       selectedVibes,
       duration,
+      startTime,
       ...updates
     };
     await setJsonItem(STORAGE_KEYS.SAVED_PREFERENCES, draft);
@@ -153,6 +173,7 @@ export default function PlannerScreen({ navigation, route }) {
     setLocation(text);
     setCityQuery(text);
     setCitiesError('');
+    setUserLocation(null);
 
     setShowDropdown(text.trim().length > 0);
 
@@ -160,8 +181,10 @@ export default function PlannerScreen({ navigation, route }) {
   };
 
 
-  // Select a city returned by the backend.
-  const selectCity = (city) => {
+  // Select a city returned by the backend. Picking a city by hand means the
+  // trip starts from its centre, so any "Use my location" position is dropped.
+  const selectCity = (city, nextUserLocation = null) => {
+    setUserLocation(nextUserLocation);
     const cityLabel = [
       city.name,
       city.state_region || city.country
@@ -181,8 +204,51 @@ export default function PlannerScreen({ navigation, route }) {
   };
 
 
+  // Fill in the nearest active city from the browser's location (web only, see CAN_USE_MY_LOCATION).
+  const handleUseMyLocation = () => {
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const here = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+          const nearest = nearestCity(await searchCities('', ALL_CITIES_LIMIT), here);
+          if (!nearest) {
+            notify('No Cities Found', 'The city list could not be loaded. Please search for a city instead.');
+            return;
+          }
+          if (nearest.km <= USER_START_MAX_KM) {
+            selectCity(nearest.city, here);
+            notify('Location Found', `Planning in ${nearest.city.name}, starting from where you are.`, 'success');
+          } else {
+            selectCity(nearest.city);
+            notify(
+              'Location Found',
+              `The nearest SquadSpot city is ${nearest.city.name}, about ${Math.round(nearest.km)} km away. The trip will start from its city centre.`,
+              'info'
+            );
+          }
+        } catch (error) {
+          notify('Location Unavailable', 'The city list could not be loaded. Please search for a city instead.');
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        notify(
+          'Location Unavailable',
+          error.code === 1
+            ? 'Location permission was denied. You can still search for a city.'
+            : 'Your location could not be found. Please search for a city instead.'
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 }
+    );
+  };
+
   // Clear the selected city.
   const clearCity = () => {
+    setUserLocation(null);
     setLocation('');
     setCityQuery('');
     setShowDropdown(false);
@@ -261,6 +327,8 @@ export default function PlannerScreen({ navigation, route }) {
       people,
       selectedVibes,
       duration,
+      startTime,
+      userLocation,
       mood: selectedVibes.includes(4) ? 'chill' : null,
     });
   };
@@ -331,7 +399,23 @@ export default function PlannerScreen({ navigation, route }) {
                   <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.3)" />
                 </TouchableOpacity>
               )}
+              {CAN_USE_MY_LOCATION && (
+                <TouchableOpacity
+                  onPress={handleUseMyLocation}
+                  disabled={isLocating}
+                  style={styles.myLocationButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use my location"
+                >
+                  {isLocating
+                    ? <ActivityIndicator size="small" color="#0df269" />
+                    : <MaterialIcons name="my-location" size={22} color="#0df269" />}
+                </TouchableOpacity>
+              )}
             </View>
+            {userLocation && (
+              <Text style={styles.locationNote}>Starting from your current location</Text>
+            )}
 
             {/* Dropdown Menu */}
             {showDropdown && (
@@ -464,6 +548,18 @@ export default function PlannerScreen({ navigation, route }) {
                 tickLabels={['1h', '4h', '8h', '12h']}
               />
             </View>
+          </View>
+
+          {/* Start Time */}
+          <View style={styles.startTimeCard}>
+            <Text style={styles.cardLabel}>Start Time</Text>
+            <StartTimePicker
+              value={startTime}
+              onChange={(next) => {
+                setStartTime(next);
+                persistDraft({ startTime: next });
+              }}
+            />
           </View>
 
           {/* Vibe Selector */}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ const formatDuration = (minutes) => {
 
 export default function ResultScreen({ navigation, route }) {
   const [activeSlide, setActiveSlide] = useState(0);
+  const carouselRef = useRef(null);
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(width * 0.85, width >= WIDE_LAYOUT_MIN_WIDTH ? 640 : 460);
   const sidePadding = Math.max((width - cardWidth) / 2, 20);
@@ -64,6 +65,8 @@ export default function ResultScreen({ navigation, route }) {
       totalEst: cost,
       costDisplay: plan.costDisplay || (plan.unknownCostCount > 0 ? (Number(cost) > 0 ? `₹${cost}+` : "Not listed") : `₹${cost}`),
       unknownCostCount: Number(plan.unknownCostCount || plan.cost_breakdown?.unknown_count || 0),
+      optionLabel: plan.optionLabel || null,
+      startsFromUserLocation: Boolean(plan.startsFromUserLocation),
       exceedsDuration: Boolean(plan.exceedsDuration),
       totalDurationMinutes: Number(plan.totalDurationMinutes || 0),
       image: plan.image || rawStops.find(stop => stop.image || stop.image_url)?.image || rawStops.find(stop => stop.image_url)?.image_url || null,
@@ -171,6 +174,14 @@ export default function ResultScreen({ navigation, route }) {
     setActiveSlide(Math.round(index));
   };
 
+  // Arrow and dot buttons: needed on desktop, where sideways scrolling with a
+  // mouse is awkward; on phones they work alongside swiping.
+  const goToSlide = (index) => {
+    const next = Math.max(0, Math.min(index, plans.length - 1));
+    setActiveSlide(next);
+    carouselRef.current?.scrollTo({ x: next * (cardWidth + CARD_GAP), animated: true });
+  };
+
   const backButton = (
     <TouchableOpacity onPress={goBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Back to planner">
       <MaterialIcons name="arrow-back" size={28} color="white" />
@@ -221,6 +232,7 @@ export default function ResultScreen({ navigation, route }) {
 
         {/* Carousel Content */}
         <ScrollView
+          ref={carouselRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: sidePadding - CARD_GAP / 2, paddingVertical: 20 }}
@@ -246,12 +258,16 @@ export default function ResultScreen({ navigation, route }) {
                   )}
                   <LinearGradient colors={['transparent', '#15291f']} style={styles.imageGradient} />
                   <View style={styles.cardHeaderContent}>
+                    {plan.optionLabel && <Text style={styles.optionLabel}>{plan.optionLabel}</Text>}
                     <Text style={styles.planTitle}>{plan.title}</Text>
                     <View style={styles.priceTag}>
-                      <Text style={styles.priceLabel}>Entry fees est.:</Text>
+                      <Text style={styles.priceLabel}>Expected Expense:</Text>
                       <Text style={styles.priceValue}>{plan.costDisplay}/person</Text>
                     </View>
-                    <Text style={{ color: "#B6C7BB", fontSize: 10, marginTop: 4 }}>Per-person attraction entry fees only; transport, meals and optional activities are extra.</Text>
+                    <Text style={{ color: "#B6C7BB", fontSize: 10, marginTop: 4 }}>Per person, for the places on this plan; "est." prices are estimates. Transport and extras are not included.</Text>
+                    {plan.startsFromUserLocation && (
+                      <Text style={styles.startNote}>Starts from your current location</Text>
+                    )}
                   </View>
                 </View>
 
@@ -334,9 +350,40 @@ export default function ResultScreen({ navigation, route }) {
 
         {/* Pagination indicators */}
         <View style={styles.pagination}>
+          {plans.length > 1 && (
+            <TouchableOpacity
+              onPress={() => goToSlide(activeSlide - 1)}
+              disabled={activeSlide === 0}
+              style={[styles.pageArrow, activeSlide === 0 && styles.pageArrowDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Previous option"
+            >
+              <MaterialIcons name="chevron-left" size={24} color="#0df269" />
+            </TouchableOpacity>
+          )}
           {plans.map((_, index) => (
-            <View key={index} style={[styles.dot, activeSlide === index && styles.activeDot]} />
+            <TouchableOpacity
+              key={index}
+              onPress={() => goToSlide(index)}
+              style={styles.dotTarget}
+              accessibilityRole="button"
+              accessibilityLabel={`Show option ${index + 1}`}
+              accessibilityState={{ selected: activeSlide === index }}
+            >
+              <View style={[styles.dot, activeSlide === index && styles.activeDot]} />
+            </TouchableOpacity>
           ))}
+          {plans.length > 1 && (
+            <TouchableOpacity
+              onPress={() => goToSlide(activeSlide + 1)}
+              disabled={activeSlide === plans.length - 1}
+              style={[styles.pageArrow, activeSlide === plans.length - 1 && styles.pageArrowDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Next option"
+            >
+              <MaterialIcons name="chevron-right" size={24} color="#0df269" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Map of the trip shown in the carousel; keyed so it re-fits when the trip changes. */}

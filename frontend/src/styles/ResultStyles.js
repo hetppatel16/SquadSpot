@@ -53,6 +53,17 @@ export const styles = StyleSheet.create({
   },
   durationBannerText: { flex: 1, color: '#fde68a', fontSize: 13, lineHeight: 18 },
   mapSection: { alignSelf: 'center' },
+  optionLabel: {
+    color: '#0df269', fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5,
+    textTransform: 'uppercase', marginBottom: 4,
+  },
+  startNote: { color: '#0df269', fontSize: 11, marginTop: 4 },
+  pageArrow: {
+    width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(13,242,105,0.3)',
+  },
+  pageArrowDisabled: { opacity: 0.3 },
+  dotTarget: { paddingVertical: 10, paddingHorizontal: 2 },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
   emptyMessage: { color: '#b8c5bd', textAlign: 'center', marginTop: 12, maxWidth: 420 },

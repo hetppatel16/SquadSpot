@@ -2,9 +2,7 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
-
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 class SignUpRequest(BaseModel):
     name: str
@@ -41,6 +39,10 @@ class ItineraryRequest(BaseModel):
         pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
         description="Outing start time as HH:MM (defaults to 10:00)",
     )
+    use_my_location: bool = Field(
+        False,
+        description="Start from latitude/longitude (the user's position) when within 50 km of the city",
+    )
 
 
 class ItineraryResponse(BaseModel):
@@ -53,3 +55,6 @@ class ItineraryResponse(BaseModel):
     total_satisfaction_score: float
     total_duration_minutes: int = Field(0, description="Minutes from start to leaving the last stop")
     exceeds_duration: bool = Field(False, description="True when the plan runs longer than requested")
+    option_label: Optional[str] = Field(None, description='e.g. "Option 1 · Best match"')
+    starts_from_user_location: bool = Field(False, description="True when the route starts from the user's position")
+    options: List[dict] = Field(default_factory=list, description="All alternative plans, best first (same shape as this object)")

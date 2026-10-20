@@ -1,12 +1,16 @@
 """Build an itinerary using verified places belonging to the selected city."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # How far past the requested duration a plan may run before it is flagged.
 DURATION_GRACE_MINUTES = 15
+# Number of alternative routes offered for one request.
+ROUTE_OPTIONS = 3
+# "Use my location" starts the trip from the user only within this distance of the city centre.
+USER_START_MAX_KM = 50
 
 
 def _normalize_city_name(value: Any) -> str:
@@ -67,10 +71,9 @@ def _no_matching_places_message(user_context: Dict[str, Any]) -> str:
 
 def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
     """Generate a city-scoped itinerary from the active places in Supabase."""
-    from app.data_layer.normalizer import normalize
+    from app.data_layer.normalizer import _distance_km, normalize
     from app.greedy_filter.filter import filter_top_k
-    from app.ga_engine.ga_core import run_ga
-    from app.scheduler.schedule import build_schedule
+    from app.ga_engine.ga_core import run_ga_options
     from app.data_layer.repository import supabase
 
     requested_city = str(user_context.get("city") or "").strip()
@@ -105,8 +108,21 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
     city_data = city_response.data[0]
     user_context["city_id"] = city_data["id"]
     user_context["city"] = city_data["name"]
-    user_context["latitude"] = float(city_data["latitude"])
-    user_context["longitude"] = float(city_data["longitude"])
+    city_lat, city_lon = float(city_data["latitude"]), float(city_data["longitude"])
+
+    # Start from the user's real position only when they asked for it and are
+    # actually near this city; otherwise plan from the city centre.
+    user_lat, user_lon = user_context.get("latitude"), user_context.get("longitude")
+    starts_from_user = (
+        bool(user_context.get("use_my_location"))
+        and user_lat is not None
+        and user_lon is not None
+        and _distance_km(float(user_lat), float(user_lon), city_lat, city_lon) <= USER_START_MAX_KM
+    )
+    user_context["starts_from_user_location"] = starts_from_user
+    if not starts_from_user:
+        user_context["latitude"] = city_lat
+        user_context["longitude"] = city_lon
 
     # The normalizer now fetches only active places attached to this city_id.
     normalized_pois = normalize(user_context)
@@ -117,13 +133,36 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
     if not candidates:
         return _empty_itinerary(user_context, _no_matching_places_message(user_context))
 
-    best_route_ids = run_ga(candidates, user_context)
-    if not best_route_ids:
+    route_options = run_ga_options(candidates, user_context, count=ROUTE_OPTIONS)
+    poi_lookup = {poi["id"]: poi for poi in candidates}
+    plans = [
+        plan
+        for plan in (
+            _build_plan(route_ids, user_context, poi_lookup, city_data["name"], number)
+            for number, route_ids in enumerate(route_options, start=1)
+        )
+        if plan
+    ]
+    if not plans:
         return _empty_itinerary(user_context, _no_matching_places_message(user_context))
 
-    poi_lookup = {poi["id"]: poi for poi in candidates}
+    # The best plan stays at the top level so older clients keep working;
+    # `options` holds every plan (best first) for the results carousel.
+    return {**plans[0], "options": plans}
+
+
+def _build_plan(
+    route_ids: List[Any],
+    user_context: Dict[str, Any],
+    poi_lookup: Dict[Any, Dict[str, Any]],
+    city_name: str,
+    option_number: int,
+) -> Optional[Dict[str, Any]]:
+    """Schedule one route and shape it for the API; None if no stop fits the day."""
+    from app.scheduler.schedule import build_schedule
+
     schedule = build_schedule(
-        best_route_ids,
+        route_ids,
         user_context,
         poi_lookup,
         start_minutes=user_context.get("start_time_minutes", 600),
@@ -174,10 +213,12 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     if not timeline:
-        return _empty_itinerary(user_context, _no_matching_places_message(user_context))
+        return None
 
     return {
-        "title": f"Perfect day in {city_data['name']}",
+        "title": f"Perfect day in {city_name}",
+        "option_label": "Option 1 · Best match" if option_number == 1 else f"Option {option_number}",
+        "starts_from_user_location": bool(user_context.get("starts_from_user_location")),
         "message": None,
         "ordered_places": ordered_places,
         "timeline": timeline,
