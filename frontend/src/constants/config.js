@@ -3,10 +3,10 @@
  * Reads from EXPO_PUBLIC_API_URL in .env
  */
 
-const rawUrl = process.env.EXPO_PUBLIC_API_URL;
+const rawUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Strip any trailing slashes for consistent endpoint path concatenation
-export const API_BASE_URL = rawUrl.replace(/\/+$/, '');
+export const API_BASE_URL = (rawUrl || '').replace(/\/+$/, '');
 
 export const API_ENDPOINTS = {
   // Auth
