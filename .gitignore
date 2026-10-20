@@ -1,14 +1,24 @@
-# Node / React Native / Expo
+# ==============================
+# Environment files and secrets
+# ==============================
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Private keys / certificates / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+credentials*.json
+
+# ==============================
+# Node.js / npm
+# ==============================
 node_modules/
 **/node_modules/
-.expo
-.expo/
-**/.expo
-**/.expo/**
-.expo-shared
-.expo-shared/
-**/.expo-shared
-**/.expo-shared/**
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -16,6 +26,22 @@ pnpm-debug.log*
 dist/
 web-build/
 
+# ==============================
+# Expo / React Native build output
+# ==============================
+.expo/
+**/.expo/
+.expo-shared/
+**/.expo-shared/
+dist/
+web-build/
+coverage/
+
+# Native generated build/cache output (keep source projects if present)
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/build/
 # Environment variables & local secrets
 .env
 .env.*
@@ -45,11 +71,71 @@ credentials.json
 *.swp
 *.swo
 
+# ==============================
 # Python
+# ==============================
 __pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+**/.venv/
+venv/
+**/venv/
 *.py[cod]
 *$py.class
 .venv/
 venv/
 env/
 .pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# ==============================
+# Local databases and generated data
+# ==============================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==============================
+# Editors / operating system
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Logs / temporary files
+# ==============================
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# ==============================
+# Local Supabase CLI state
+# ==============================
+supabase/.branches/
+supabase/.temp/
+# Automated tests - keep locally, don't upload
+/backend/tests/
+
+# Temporary patch documentation - keep locally
+/COST_AND_DURATION_FIX_README.md
+/ITINERARY_FIXES.md
+/PATCH_INSTRUCTIONS.txt
+/PATCH_README.txt
+/RESTORE_INSTRUCTIONS.txt
+/try.txt

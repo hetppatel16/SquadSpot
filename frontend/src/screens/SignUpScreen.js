@@ -17,8 +17,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'; 
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 import { signUpUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -67,14 +69,25 @@ export default function SignUpScreen({ navigation }) {
       .catch(() => setIsAppleAvailable(false));
   }, []);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  // Keep Google sign-in identical on signup and login: both flows need an
+  // ID token so Supabase can verify the user's identity on the backend.
+  const googleRedirectUri = AuthSession.makeRedirectUri({
+    scheme: 'squadspot',
+    path: 'oauthredirect',
+  });
+  const googleClientId = Platform.select({
+    android: GOOGLE_AUTH_CONFIG.androidClientId,
+    ios: GOOGLE_AUTH_CONFIG.iosClientId,
+    default: GOOGLE_AUTH_CONFIG.webClientId,
+  });
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
     iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
     webClientId: GOOGLE_AUTH_CONFIG.webClientId,
+    redirectUri: googleRedirectUri,
     scopes: ['openid', 'profile', 'email'],
-    extraParams: {
-      prompt: 'select_account',
-    },
+    selectAccount: true,
   });
 
   useEffect(() => {
@@ -89,14 +102,20 @@ export default function SignUpScreen({ navigation }) {
     }
   }, [response]);
 
-  const handleBackendOAuth = async (provider, idToken, accessToken) => {
+  const handleBackendOAuth = async (provider, idToken, accessToken, nonce = null, fullName = null) => {
+    if (!idToken) {
+      const message = `${provider} did not return an identity token. Please try again.`;
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Authentication Failed', message);
+      return;
+    }
     setIsOAuthLoading(true);
     try {
-      const data = await oauthLogin(provider, idToken, accessToken);
+      const data = await oauthLogin(provider, idToken, accessToken, nonce, fullName);
       if (login) {
-        await login(data.user, data.token || null);
+        await login(data.user, data.token, data.refresh_token, data.expires_at);
       }
-      navigation.replace('Planner');
+      // Auth state change switches AppNavigator to the private routes.
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;
@@ -111,16 +130,19 @@ export default function SignUpScreen({ navigation }) {
   };
 
   const handleGooglePress = () => {
-    // If the webClientId is still the default placeholder, automatically
-    // authenticate in dev mode using the typed email or developer default
-    if (GOOGLE_AUTH_CONFIG.webClientId.includes('YOUR_WEB_CLIENT_ID')) {
-      const targetEmail = email.trim() && validateEmailInline(email.trim()) 
-        ? email.trim() 
-        : GOOGLE_AUTH_CONFIG.developerEmail;
-      handleBackendOAuth('google', 'mock_google_token', targetEmail);
-    } else {
-      promptAsync();
+    if (!googleClientId || googleClientId.includes('YOUR_')) {
+      const message = 'Google Sign-In is not configured for this platform. Add its OAuth client ID first.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Google Sign-In Unavailable', message);
+      return;
     }
+    if (!request) {
+      const message = 'Google Sign-In is still initializing. Please try again in a moment.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Please Wait', message);
+      return;
+    }
+    promptAsync();
   };
 
   const handleSignUp = async () => {
@@ -167,17 +189,47 @@ export default function SignUpScreen({ navigation }) {
 
     try {
       setIsLoading(true);
-      await signUpUser({
+      const response = await signUpUser({
         name: trimmedFullName,
         email: trimmedEmail,
         password: password,
         phone: trimmedPhone
       });
-      
-      if (Platform.OS === 'web') window.alert('Account created successfully! Please log in.');
-      else Alert.alert('Success', 'Account created successfully! Please log in.');
-      
-      navigation.navigate('Login');
+const hasWebSession =
+  Platform.OS === 'web' &&
+  response.user &&
+  !response.confirmation_required;
+
+const hasMobileSession =
+  Platform.OS !== 'web' &&
+  response.token &&
+  response.refresh_token;
+
+if (hasWebSession) {
+  // Browser authentication is stored in HttpOnly cookies.
+  await login(response.user);
+
+} else if (hasMobileSession) {
+  // Mobile continues using Bearer tokens.
+  await login(
+    response.user,
+    response.token,
+    response.refresh_token,
+    response.expires_at
+  );
+
+} else {
+  const message =
+    'Account created. Please check your email and confirm your account before logging in.';
+
+  if (Platform.OS === 'web') {
+    window.alert(message);
+  } else {
+    Alert.alert('Account Created', message);
+  }
+
+  navigation.navigate('Login');
+}
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Registration failed.');
       else Alert.alert('Registration Failed', error.message || 'Registration failed.');
@@ -265,7 +317,7 @@ export default function SignUpScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', gap: 16 }}>
                   {/* Google Login Button */}
                   <TouchableOpacity 
-                    disabled={isOAuthLoading || isLoading}
+                    disabled={!request || isOAuthLoading || isLoading}
                     style={{ 
                       backgroundColor: 'rgba(255,255,255,0.08)', 
                       paddingVertical: 12, 
@@ -278,7 +330,7 @@ export default function SignUpScreen({ navigation }) {
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.15)',
                       gap: 10,
-                      opacity: (isOAuthLoading || isLoading) ? 0.7 : 1
+                      opacity: (!request || isOAuthLoading || isLoading) ? 0.7 : 1
                     }} 
                     onPress={handleGooglePress}
                   >
@@ -301,13 +353,27 @@ export default function SignUpScreen({ navigation }) {
                       style={{ width: 140, height: 48 }}
                       onPress={async () => {
                         try {
+                          const randomBytes = await Crypto.getRandomBytesAsync(32);
+                          const rawNonce = Array.from(randomBytes)
+                            .map((byte) => byte.toString(16).padStart(2, '0'))
+                            .join('');
+                          const hashedNonce = await Crypto.digestStringAsync(
+                            Crypto.CryptoDigestAlgorithm.SHA256,
+                            rawNonce
+                          );
                           const credential = await AppleAuthentication.signInAsync({
+                            nonce: hashedNonce,
                             requestedScopes: [
                               AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
                               AppleAuthentication.AppleAuthenticationScope.EMAIL,
                             ],
                           });
-                          handleBackendOAuth('apple', credential.identityToken, null);
+                          const appleFullName = credential.fullName
+                            ? [credential.fullName.givenName, credential.fullName.middleName, credential.fullName.familyName]
+                                .filter(Boolean)
+                                .join(' ')
+                            : null;
+                          handleBackendOAuth('apple', credential.identityToken, null, rawNonce, appleFullName);
                         } catch (e) {
                           if (e.code !== 'ERR_REQUEST_CANCELED') {
                             Alert.alert('Apple Auth Error', e.message);

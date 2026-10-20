@@ -5,6 +5,8 @@ import * as SecureStore from 'expo-secure-store';
 const STORAGE_KEYS = {
   USER_PROFILE: '@squadspot_user_profile',
   AUTH_TOKEN: 'squadspot_auth_token',
+  REFRESH_TOKEN: 'squadspot_refresh_token',
+  TOKEN_EXPIRES_AT: 'squadspot_token_expires_at',
   SAVED_PREFERENCES: '@squadspot_user_preferences',
 };
 
@@ -108,16 +110,25 @@ export async function removeJsonItem(key) {
 /**
  * Save full session (User profile to AsyncStorage + Auth token to SecureStore)
  */
-export async function saveSession(user, token = null) {
+export async function saveSession(user, token = null, refreshToken = null, expiresAt = null) {
   try {
     if (user) {
       await setJsonItem(STORAGE_KEYS.USER_PROFILE, user);
+    } else {
+      await removeJsonItem(STORAGE_KEYS.USER_PROFILE);
     }
-    if (token) {
-      await setSecureItem(STORAGE_KEYS.AUTH_TOKEN, token);
-    }
+
+    // Always write or remove token fields together. This prevents an old token
+    // from being left behind when a new login response has no session.
+    await setSecureItem(STORAGE_KEYS.AUTH_TOKEN, token);
+    await setSecureItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    await setSecureItem(
+      STORAGE_KEYS.TOKEN_EXPIRES_AT,
+      expiresAt === null || expiresAt === undefined ? null : String(expiresAt)
+    );
   } catch (error) {
     console.error('Error saving session:', error);
+    throw error;
   }
 }
 
@@ -126,12 +137,21 @@ export async function saveSession(user, token = null) {
  */
 export async function loadSession() {
   try {
-    const user = await getJsonItem(STORAGE_KEYS.USER_PROFILE);
-    const token = await getSecureItem(STORAGE_KEYS.AUTH_TOKEN);
-    return { user, token };
+    const [user, token, refreshToken, expiresAt] = await Promise.all([
+      getJsonItem(STORAGE_KEYS.USER_PROFILE),
+      getSecureItem(STORAGE_KEYS.AUTH_TOKEN),
+      getSecureItem(STORAGE_KEYS.REFRESH_TOKEN),
+      getSecureItem(STORAGE_KEYS.TOKEN_EXPIRES_AT),
+    ]);
+    return {
+      user,
+      token,
+      refreshToken,
+      expiresAt: expiresAt ? Number(expiresAt) : null,
+    };
   } catch (error) {
     console.error('Error loading session:', error);
-    return { user: null, token: null };
+    return { user: null, token: null, refreshToken: null, expiresAt: null };
   }
 }
 
@@ -140,10 +160,15 @@ export async function loadSession() {
  */
 export async function clearSession() {
   try {
-    await removeJsonItem(STORAGE_KEYS.USER_PROFILE);
-    await removeSecureItem(STORAGE_KEYS.AUTH_TOKEN);
+    await Promise.all([
+      removeJsonItem(STORAGE_KEYS.USER_PROFILE),
+      removeSecureItem(STORAGE_KEYS.AUTH_TOKEN),
+      removeSecureItem(STORAGE_KEYS.REFRESH_TOKEN),
+      removeSecureItem(STORAGE_KEYS.TOKEN_EXPIRES_AT),
+    ]);
   } catch (error) {
     console.error('Error clearing session:', error);
+    throw error;
   }
 }
 

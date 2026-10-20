@@ -8,8 +8,6 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  Keyboard,
   SafeAreaView,
   Alert,
   ActivityIndicator
@@ -34,7 +32,7 @@ const validatePasswordInline = (password) => {
 };
 
 export default function OtpScreen({ navigation, route }) {
-  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,11 +40,11 @@ export default function OtpScreen({ navigation, route }) {
 
   const handleVerifyOtp = async () => {
     const otpCode = otp.join('');
-    if (otpCode.length < 4) {
+    if (otpCode.length !== 6) {
       if (Platform.OS === 'web') {
-        window.alert('Please enter the 4-digit OTP.');
+        window.alert('Please enter the 6-digit recovery code.');
       } else {
-        Alert.alert('Incomplete OTP', 'Please enter the 4-digit OTP.');
+        Alert.alert('Incomplete OTP', 'Please enter the 6-digit recovery code.');
       }
       return;
     }
@@ -95,7 +93,7 @@ export default function OtpScreen({ navigation, route }) {
     setOtp(newOtp);
 
     // Auto-advance to the next input if a number is typed
-    if (text.length === 1 && index < 3) {
+    if (text.length === 1 && index < 5) {
       inputRefs.current[index + 1].focus();
     }
   };
@@ -121,7 +119,7 @@ export default function OtpScreen({ navigation, route }) {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboardView}
         >
-          <Pressable onPress={Keyboard.dismiss} style={styles.keyboardView}>
+          <View style={styles.keyboardView}>
             <View style={styles.innerContainer}>
 
               {/* Top Navigation */}
@@ -139,14 +137,14 @@ export default function OtpScreen({ navigation, route }) {
                 <View style={styles.header}>
                   <Text style={styles.title}>Verify OTP</Text>
                   <Text style={styles.subtitle}>
-                    We've sent a 4-digit code to your email.
+                    We've sent a 6-digit recovery code to your email.
                   </Text>
                 </View>
 
                 {/* Form */}
                 <View style={styles.formContainer}>
 
-                  {/* 4-Box OTP Input Area */}
+                  {/* Six-digit OTP Input Area */}
                   <View style={styles.otpContainer}>
                     {otp.map((digit, index) => (
                       <TextInput
@@ -235,7 +233,7 @@ export default function OtpScreen({ navigation, route }) {
               </View>
 
             </View>
-          </Pressable>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
