@@ -18,6 +18,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from "../styles/ResultStyles";
 import { confirmAction, notify } from '../utils/feedback';
 import { loadTrip } from '../utils/tripStore';
+// Web: interactive Leaflet map (RouteMap.web.js). Mobile: renders nothing (RouteMap.js).
+import RouteMap from '../components/RouteMap';
 
 const CARD_GAP = 20;
 const WIDE_LAYOUT_MIN_WIDTH = 900;
@@ -86,6 +88,7 @@ export default function ResultScreen({ navigation, route }) {
 
   // Never replace a missing/empty itinerary with unrelated demo attractions.
   const plans = cleanedPlans.filter(plan => plan.stops.length > 0);
+  const activePlan = plans[Math.min(activeSlide, plans.length - 1)] || null;
   const requestedHours = Number(rawParams.requestedHours) || null;
 
   const durationWarning = (plan) => (
@@ -335,6 +338,13 @@ export default function ResultScreen({ navigation, route }) {
             <View key={index} style={[styles.dot, activeSlide === index && styles.activeDot]} />
           ))}
         </View>
+
+        {/* Map of the trip shown in the carousel; keyed so it re-fits when the trip changes. */}
+        {activePlan && (
+          <View style={[styles.mapSection, { width: cardWidth }]}>
+            <RouteMap key={activePlan.id} stops={activePlan.stops} />
+          </View>
+        )}
         </Page>
       </SafeAreaView>
     </View>

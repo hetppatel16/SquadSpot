@@ -52,6 +52,7 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(251,191,36,0.08)', borderColor: 'rgba(251,191,36,0.4)',
   },
   durationBannerText: { flex: 1, color: '#fde68a', fontSize: 13, lineHeight: 18 },
+  mapSection: { alignSelf: 'center' },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
   emptyMessage: { color: '#b8c5bd', textAlign: 'center', marginTop: 12, maxWidth: 420 },
