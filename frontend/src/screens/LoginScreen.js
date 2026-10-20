@@ -24,9 +24,11 @@ import * as Crypto from 'expo-crypto';
 
 import { loginUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { notify } from '../utils/feedback';
 import { styles } from "../styles/LoginStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
 import ResponsiveContainer from '../components/ResponsiveContainer';
+import { useGoogleWebNonce } from '../utils/googleNonce';
 
 // Completes the authentication routing redirect loop properly back onto mobile screens
 WebBrowser.maybeCompleteAuthSession();
@@ -65,6 +67,7 @@ export default function LoginScreen({ navigation }) {
 
   // This hook requests an ID token (directly on web and through the native
   // authorization-code exchange on installed iOS/Android builds).
+  const googleNonce = useGoogleWebNonce();
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
     iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
@@ -72,6 +75,7 @@ export default function LoginScreen({ navigation }) {
     redirectUri: googleRedirectUri,
     scopes: ['openid', 'profile', 'email'],
     selectAccount: true,
+    extraParams: googleNonce.extraParams,
   });
 
   // Listen for active Google session authorization success responses
@@ -83,7 +87,7 @@ export default function LoginScreen({ navigation }) {
       const idToken = authObj.idToken || authObj.id_token || paramsObj.id_token || paramsObj.idToken || null;
       const accessToken = authObj.accessToken || authObj.access_token || paramsObj.access_token || paramsObj.accessToken || null;
 
-      handleBackendOAuth('google', idToken, accessToken);
+      handleBackendOAuth('google', idToken, accessToken, googleNonce.raw);
     }
   }, [response]);
 
@@ -91,8 +95,7 @@ export default function LoginScreen({ navigation }) {
   const handleBackendOAuth = async (provider, idToken, accessToken, nonce = null, fullName = null) => {
     if (!idToken) {
       const message = `${provider} did not return an identity token. Please try again.`;
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Authentication Failed', message);
+      notify('Authentication Failed', message);
       return;
     }
     setIsOAuthLoading(true);
@@ -105,11 +108,7 @@ export default function LoginScreen({ navigation }) {
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Authentication Failed', msg);
-      }
+      notify('Authentication Failed', msg);
     } finally {
       setIsOAuthLoading(false);
     }
@@ -118,14 +117,13 @@ export default function LoginScreen({ navigation }) {
   const handleGooglePress = () => {
     if (!googleClientId || googleClientId.includes('YOUR_')) {
       const message = 'Google Sign-In is not configured for this platform. Add its OAuth client ID first.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Google Sign-In Unavailable', message);
+      notify('Google Sign-In Unavailable', message);
       return;
     }
-    if (!request) {
+    // On web the request must carry our nonce (see utils/googleNonce.js).
+    if (!request || (Platform.OS === 'web' && !googleNonce.raw)) {
       const message = 'Google Sign-In is still initializing. Please try again in a moment.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Please Wait', message);
+      notify('Please Wait', message, 'info');
       return;
     }
     promptAsync();
@@ -134,13 +132,11 @@ export default function LoginScreen({ navigation }) {
   const handleLogin = async () => {
     const trimmedEmail = email.trim();
     if (trimmedEmail === '' || password.trim() === '') {
-      if (Platform.OS === 'web') window.alert('Both email and password are required.');
-      else Alert.alert('Missing Details', 'Both email and password are required.');
+      notify('Missing Details', 'Both email and password are required.');
       return; 
     }
     if (!validateEmailInline(trimmedEmail)) {
-      if (Platform.OS === 'web') window.alert('Please enter a valid email structure.');
-      else Alert.alert('Invalid Email', 'Please enter a valid email structure.');
+      notify('Invalid Email', 'Please enter a valid email structure.');
       return;
     }
     setIsLoading(true);
@@ -151,8 +147,7 @@ export default function LoginScreen({ navigation }) {
       }
       // Auth state change switches AppNavigator to the private routes.
     } catch (error) {
-      if (Platform.OS === 'web') window.alert(error.message || 'Login failed.');
-      else Alert.alert('Login Failed', error.message || 'Login failed.');
+      notify('Login Failed', error.message || 'Login failed.');
     } finally {
       setIsLoading(false);
     }
@@ -191,7 +186,7 @@ export default function LoginScreen({ navigation }) {
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
                   <TextInput style={styles.input} placeholder="Enter your password" placeholderTextColor="rgba(255,255,255,0.3)" value={password} onChangeText={setPassword} secureTextEntry={!isPasswordVisible} autoCapitalize="none" autoComplete="current-password" textContentType="password"/>
-                  <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton}>
+                  <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel="Show or hide password">
                     <MaterialIcons name={isPasswordVisible ? "visibility" : "visibility-off"} size={22} color="rgba(255,255,255,0.4)" />
                   </TouchableOpacity>
                 </View>
@@ -295,11 +290,7 @@ export default function LoginScreen({ navigation }) {
                       }} 
                       onPress={() => {
                         const alertMsg = "Apple Sign-in is only supported on Apple iOS devices.";
-                        if (Platform.OS === 'web') {
-                          window.alert(alertMsg);
-                        } else {
-                          Alert.alert('Not Supported', alertMsg);
-                        }
+                        notify('Not Supported', alertMsg, 'info');
                       }}
                     >
                       <FontAwesome name="apple" size={18} color="#ffffff" />

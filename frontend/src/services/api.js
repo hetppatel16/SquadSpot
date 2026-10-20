@@ -280,14 +280,15 @@ export async function fetchItinerary(userContext, accessToken) {
     throw error;
   }
   try {
-    // Nature, Food, Adventure, Shopping and Culture are database categories.
+    // Nature, Food, Adventure, Shopping, Culture and Movie are database categories.
     // Chill is a database vibe, so it is sent separately as the requested mood.
     const categoryMap = {
       1: 'nature',
       2: 'food',
       3: 'adventure',
       5: 'shopping',
-      6: 'culture'
+      6: 'culture',
+      7: 'movie'
     };
     const selectedOptions = userContext.selectedVibes || [];
     const preferences = selectedOptions
@@ -347,6 +348,14 @@ export async function fetchItinerary(userContext, accessToken) {
   }
 }
 
+/** "10:00–11:00", keeping the backend's "(next day)" note at the end. */
+function formatStopTime(stop) {
+  if (!stop.time) return "Flexible";
+  if (!stop.end_time) return stop.time;
+  const [start, ...note] = stop.time.split(' (');
+  return `${start}–${stop.end_time}${note.length ? ` (${note.join(' (')}` : ''}`;
+}
+
 /** "₹150–400", or "₹250" when both ends are equal. */
 function formatCostRange(low, high) {
   return low === high ? `₹${low}` : `₹${low}–${high}`;
@@ -391,7 +400,12 @@ export function transformToPlan(apiResponse) {
       totalEst: String(rawTotalCost),
       unknownCostCount,
       costDisplay,
-      image: plan.image || rawStops[0]?.image_url || 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
+      // Set when the plan runs longer than the hours the user chose.
+      exceedsDuration: Boolean(plan.exceeds_duration),
+      totalDurationMinutes: Number(plan.total_duration_minutes || 0),
+      // A real photo of a stop when one exists; ResultScreen draws a plain
+      // themed header otherwise (no unrelated stock city photo).
+      image: plan.image || rawStops.find(stop => stop.image_url)?.image_url || null,
       stops: rawStops.map((stop, i) => {
         const place = placeById.get(String(stop.place_id || stop.id)) || {};
         const isFood = stop.category?.toLowerCase().includes('food') || stop.type?.toLowerCase().includes('food');
@@ -403,7 +417,7 @@ export function transformToPlan(apiResponse) {
           icon: stop.icon || (isFood ? 'restaurant' : 'park'),
           title: stop.name || stop.title || `Stop ${i + 1}`,
           type: stop.type || stop.category || "Activity",
-          time: stop.time || "Flexible",
+          time: formatStopTime(stop),
           price: (() => {
             const overBudget = stop.over_budget ? ' · over budget' : '';
             const rawPrice = stop.price ?? stop.cost ?? null;

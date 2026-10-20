@@ -7,6 +7,7 @@ import {
   STORAGE_KEYS,
 } from '../utils/storage';
 import { getMyProfile, refreshAuthSession, revokeAuthSession, updateMyProfile } from '../services/api';
+import { clearTrip } from '../utils/tripStore';
 
 const AuthContext = createContext(null);
 
@@ -52,6 +53,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     await clearSession();
+    // The next person to sign in on this browser tab must not see this trip.
+    clearTrip();
 
     if (activeToken && activeRefreshToken) {
       try {

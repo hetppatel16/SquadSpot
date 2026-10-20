@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { verifyOtpAndResetPassword } from '../services/api';
+import { notify } from '../utils/feedback';
 
 const validatePasswordInline = (password) => {
   const errors = [];
@@ -41,26 +42,20 @@ export default function OtpScreen({ navigation, route }) {
   const handleVerifyOtp = async () => {
     const otpCode = otp.join('');
     if (otpCode.length !== 6) {
-      if (Platform.OS === 'web') {
-        window.alert('Please enter the 6-digit recovery code.');
-      } else {
-        Alert.alert('Incomplete OTP', 'Please enter the 6-digit recovery code.');
-      }
+      notify('Incomplete OTP', 'Please enter the 6-digit recovery code.');
       return;
     }
 
     if (!newPassword.trim()) {
       const emptyMsg = 'Please enter a new password.';
-      if (Platform.OS === 'web') window.alert(emptyMsg);
-      else Alert.alert('Missing Details', emptyMsg);
+      notify('Missing Details', emptyMsg);
       return;
     }
 
     const passwordValidation = validatePasswordInline(newPassword);
     if (!passwordValidation.isValid) {
       const errorMsg = "Password must include:\n" + passwordValidation.errors.map(e => `• ${e}`).join('\n');
-      if (Platform.OS === 'web') window.alert(errorMsg);
-      else Alert.alert('Weak Password', errorMsg);
+      notify('Weak Password', errorMsg);
       return;
     }
 
@@ -68,20 +63,12 @@ export default function OtpScreen({ navigation, route }) {
     try {
       setIsLoading(true);
       await verifyOtpAndResetPassword(email, otpCode, newPassword);
-      if (Platform.OS === 'web') {
-        window.alert('Password reset and updated successfully! You can now log in.');
-      } else {
-        Alert.alert('Verification Successful', 'Password reset and updated successfully! You can now log in.');
-      }
+      notify('Verification Successful', 'Password reset and updated successfully! You can now log in.', 'success');
       navigation.navigate('Login');
     } catch (error) {
       console.error('OTP Verification Error:', error);
       const errMsg = error.message || 'Cannot reach backend server. Make sure it is running.';
-      if (Platform.OS === 'web') {
-        window.alert(errMsg);
-      } else {
-        Alert.alert('Verification Failed', errMsg);
-      }
+      notify('Verification Failed', errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +111,7 @@ export default function OtpScreen({ navigation, route }) {
 
               {/* Top Navigation */}
               <View style={styles.navContainer}>
-                <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+                <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Login'))} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Go back">
                   <BlurView intensity={20} tint="dark" style={styles.backButton}>
                     <MaterialIcons name="arrow-back" size={24} color="#f1f5f9" />
                   </BlurView>
@@ -180,7 +167,7 @@ export default function OtpScreen({ navigation, route }) {
                         autoComplete="new-password"
                         textContentType="newPassword"
                       />
-                      <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton}>
+                      <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel="Show or hide password">
                         <MaterialIcons name={isPasswordVisible ? "visibility" : "visibility-off"} size={22} color="rgba(255,255,255,0.4)" />
                       </TouchableOpacity>
                     </View>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getPathFromState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -19,6 +19,41 @@ import ResultScreen from '../screens/ResultScreen';
 
 const Stack = createNativeStackNavigator();
 
+// Gives every screen its own browser URL so Back/Forward and bookmarks work on
+// web. On mobile the same config handles squadspot:// deep links
+// (e.g. squadspot://plan); the `prefixes` entry is ignored on web.
+const linking = {
+  prefixes: ['squadspot://'],
+  config: {
+    screens: {
+      Login: 'login',
+      SignUp: 'signup',
+      ForgotPassword: 'forgot-password',
+      OtpScreen: 'reset-password',
+      Planner: 'plan',
+      Loading: 'planning',
+      Result: 'trip',
+    },
+  },
+  // Screen data (planner choices, the generated trip, the reset email) stays
+  // in memory instead of being written into the address bar as ?query=...
+  getPathFromState: (state, options) => getPathFromState(state, options).split('?')[0],
+};
+
+// Browser tab titles (web only; mobile ignores documentTitle).
+const SCREEN_TITLES = {
+  Login: 'Sign in',
+  SignUp: 'Create account',
+  ForgotPassword: 'Forgot password',
+  OtpScreen: 'Reset password',
+  Planner: 'Plan your outing',
+  Loading: 'Planning your day',
+  Result: 'Your trip',
+};
+const documentTitle = {
+  formatter: (options, route) => `${SCREEN_TITLES[route?.name] || 'Plan your outing'} · SquadSpot`,
+};
+
 export default function AppNavigator() {
   const { isLoading, isAuthenticated } = useAuth();
 
@@ -35,7 +70,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer independent>
+    <NavigationContainer independent linking={linking} documentTitle={documentTitle}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

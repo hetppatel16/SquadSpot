@@ -24,9 +24,11 @@ import * as Crypto from 'expo-crypto';
 
 import { signUpUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { notify } from '../utils/feedback';
 import { styles } from "../styles/SignUpStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
 import ResponsiveContainer from '../components/ResponsiveContainer';
+import { useGoogleWebNonce } from '../utils/googleNonce';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -81,6 +83,7 @@ export default function SignUpScreen({ navigation }) {
     default: GOOGLE_AUTH_CONFIG.webClientId,
   });
 
+  const googleNonce = useGoogleWebNonce();
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
     iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
@@ -88,6 +91,7 @@ export default function SignUpScreen({ navigation }) {
     redirectUri: googleRedirectUri,
     scopes: ['openid', 'profile', 'email'],
     selectAccount: true,
+    extraParams: googleNonce.extraParams,
   });
 
   useEffect(() => {
@@ -98,15 +102,14 @@ export default function SignUpScreen({ navigation }) {
       const idToken = authObj.idToken || authObj.id_token || paramsObj.id_token || paramsObj.idToken || null;
       const accessToken = authObj.accessToken || authObj.access_token || paramsObj.access_token || paramsObj.accessToken || null;
 
-      handleBackendOAuth('google', idToken, accessToken);
+      handleBackendOAuth('google', idToken, accessToken, googleNonce.raw);
     }
   }, [response]);
 
   const handleBackendOAuth = async (provider, idToken, accessToken, nonce = null, fullName = null) => {
     if (!idToken) {
       const message = `${provider} did not return an identity token. Please try again.`;
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Authentication Failed', message);
+      notify('Authentication Failed', message);
       return;
     }
     setIsOAuthLoading(true);
@@ -119,11 +122,7 @@ export default function SignUpScreen({ navigation }) {
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Authentication Failed', msg);
-      }
+      notify('Authentication Failed', msg);
     } finally {
       setIsOAuthLoading(false);
     }
@@ -132,14 +131,13 @@ export default function SignUpScreen({ navigation }) {
   const handleGooglePress = () => {
     if (!googleClientId || googleClientId.includes('YOUR_')) {
       const message = 'Google Sign-In is not configured for this platform. Add its OAuth client ID first.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Google Sign-In Unavailable', message);
+      notify('Google Sign-In Unavailable', message);
       return;
     }
-    if (!request) {
+    // On web the request must carry our nonce (see utils/googleNonce.js).
+    if (!request || (Platform.OS === 'web' && !googleNonce.raw)) {
       const message = 'Google Sign-In is still initializing. Please try again in a moment.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Please Wait', message);
+      notify('Please Wait', message, 'info');
       return;
     }
     promptAsync();
@@ -152,29 +150,25 @@ export default function SignUpScreen({ navigation }) {
 
     // 1. Check for blank fields
     if (!trimmedFullName || !trimmedEmail || !trimmedPhone || !password.trim() || !confirmPassword.trim()) {
-      if (Platform.OS === 'web') window.alert('All fields are mandatory.');
-      else Alert.alert('Validation Error', 'All fields are mandatory.');
+      notify('Validation Error', 'All fields are mandatory.');
       return;
     }
 
     // 2. Validate structural layout email
     if (!validateEmailInline(trimmedEmail)) {
-      if (Platform.OS === 'web') window.alert('Please enter a valid structural email address.');
-      else Alert.alert('Validation Error', 'Please enter a valid structural email address.');
+      notify('Validation Error', 'Please enter a valid structural email address.');
       return;
     }
 
     // 3. Verify phone number length
     if (trimmedPhone.length !== 10) {
-      if (Platform.OS === 'web') window.alert('Please enter a valid 10-digit phone number.');
-      else Alert.alert('Validation Error', 'Please enter a valid 10-digit phone number.');
+      notify('Validation Error', 'Please enter a valid 10-digit phone number.');
       return;
     }
 
     // 4. Confirm match strings
     if (password !== confirmPassword) {
-      if (Platform.OS === 'web') window.alert('Passwords do not match!');
-      else Alert.alert('Validation Error', 'Passwords do not match!');
+      notify('Validation Error', 'Passwords do not match!');
       return;
     }
 
@@ -182,8 +176,7 @@ export default function SignUpScreen({ navigation }) {
     const passwordValidation = validatePasswordInline(password);
     if (!passwordValidation.isValid) {
       const errorMsg = "Password must include:\n" + passwordValidation.errors.map(e => `• ${e}`).join('\n');
-      if (Platform.OS === 'web') window.alert(errorMsg);
-      else Alert.alert('Weak Password', errorMsg);
+      notify('Weak Password', errorMsg);
       return;
     }
 
@@ -195,44 +188,27 @@ export default function SignUpScreen({ navigation }) {
         password: password,
         phone: trimmedPhone
       });
-const hasWebSession =
-  Platform.OS === 'web' &&
-  response.user &&
-  !response.confirmation_required;
+      // Web and mobile both use Bearer tokens (the cookie design was rolled
+      // back). Supabase returns tokens only when email confirmation is off.
+      const hasSession = response.user && response.token && response.refresh_token;
 
-const hasMobileSession =
-  Platform.OS !== 'web' &&
-  response.token &&
-  response.refresh_token;
-
-if (hasWebSession) {
-  // Browser authentication is stored in HttpOnly cookies.
-  await login(response.user);
-
-} else if (hasMobileSession) {
-  // Mobile continues using Bearer tokens.
-  await login(
-    response.user,
-    response.token,
-    response.refresh_token,
-    response.expires_at
-  );
-
-} else {
-  const message =
-    'Account created. Please check your email and confirm your account before logging in.';
-
-  if (Platform.OS === 'web') {
-    window.alert(message);
-  } else {
-    Alert.alert('Account Created', message);
-  }
-
-  navigation.navigate('Login');
-}
+      if (hasSession) {
+        await login(
+          response.user,
+          response.token,
+          response.refresh_token,
+          response.expires_at
+        );
+      } else {
+        notify(
+          'Account Created',
+          'Account created. Please check your email and confirm your account before logging in.',
+          'success'
+        );
+        navigation.navigate('Login');
+      }
     } catch (error) {
-      if (Platform.OS === 'web') window.alert(error.message || 'Registration failed.');
-      else Alert.alert('Registration Failed', error.message || 'Registration failed.');
+      notify('Registration Failed', error.message || 'Registration failed.');
     } finally {
       setIsLoading(false);
     }
@@ -282,7 +258,7 @@ if (hasWebSession) {
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
                   <TextInput style={styles.input} placeholder="Create a strong password" placeholderTextColor="rgba(255,255,255,0.3)" value={password} onChangeText={setPassword} secureTextEntry={!isPasswordVisible} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword"/>
-                  <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton}>
+                  <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel="Show or hide password">
                     <MaterialIcons name={isPasswordVisible ? "visibility" : "visibility-off"} size={22} color="rgba(255,255,255,0.4)" />
                   </TouchableOpacity>
                 </View>
@@ -293,7 +269,7 @@ if (hasWebSession) {
                 <View style={styles.glassInput}>
                   <MaterialIcons name="lock-outline" size={22} color="rgba(255,255,255,0.4)" style={styles.icon} />
                   <TextInput style={styles.input} placeholder="Repeat your password" placeholderTextColor="rgba(255,255,255,0.3)" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!isConfirmPasswordVisible} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword"/>
-                  <TouchableOpacity onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)} style={styles.eyeButton}>
+                  <TouchableOpacity onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel="Show or hide confirm password">
                     <MaterialIcons name={isConfirmPasswordVisible ? "visibility" : "visibility-off"} size={22} color="rgba(255,255,255,0.4)" />
                   </TouchableOpacity>
                 </View>
@@ -397,11 +373,7 @@ if (hasWebSession) {
                       }} 
                       onPress={() => {
                         const alertMsg = "Apple Sign-in is only supported on Apple iOS devices.";
-                        if (Platform.OS === 'web') {
-                          window.alert(alertMsg);
-                        } else {
-                          Alert.alert('Not Supported', alertMsg);
-                        }
+                        notify('Not Supported', alertMsg, 'info');
                       }}
                     >
                       <FontAwesome name="apple" size={18} color="#ffffff" />

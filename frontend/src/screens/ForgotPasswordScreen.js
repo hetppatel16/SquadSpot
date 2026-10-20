@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { requestPasswordReset } from '../services/api';
+import { notify } from '../utils/feedback';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -24,30 +25,18 @@ export default function ForgotPasswordScreen({ navigation }) {
   const handleSendOtp = async () => {
     const emailClean = email.trim();
     if (emailClean === '') {
-      if (Platform.OS === 'web') {
-        window.alert('Please enter your email address.');
-      } else {
-        Alert.alert('Missing Email', 'Please enter your email address.');
-      }
+      notify('Missing Email', 'Please enter your email address.');
       return;
     }
     setIsLoading(true);
     try {
       await requestPasswordReset(emailClean);
-      if (Platform.OS === 'web') {
-        window.alert('If an account exists for this email, a password recovery code has been sent.');
-      } else {
-        Alert.alert('Check Your Email', 'If an account exists for this email, a password recovery code has been sent.');
-      }
+      notify('Check Your Email', 'If an account exists for this email, a password recovery code has been sent.', 'success');
       navigation.navigate('OtpScreen', { email: emailClean });
     } catch (error) {
       console.error('Reset Password Error:', error);
       const errMsg = error.message || 'Cannot reach backend server. Make sure it is running.';
-      if (Platform.OS === 'web') {
-        window.alert(errMsg);
-      } else {
-        Alert.alert('Error', errMsg);
-      }
+      notify('Error', errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +62,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
               {/* Top Navigation */}
               <View style={styles.navContainer}>
-                <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+                <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Login'))} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Go back">
                   <BlurView intensity={20} tint="dark" style={styles.backButton}>
                     <MaterialIcons name="arrow-back" size={24} color="#f1f5f9" />
                   </BlurView>

@@ -6,6 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from '../styles/LoadingScreenStyles';
 import { fetchItinerary, transformToPlan } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { clearTrip, saveTrip } from '../utils/tripStore';
 
 export default function LoadingScreen({ navigation, route }) {
   const plannerData = route.params || {};
@@ -13,6 +14,13 @@ export default function LoadingScreen({ navigation, route }) {
   const bounceValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Opened without planner data, e.g. a browser refresh on /planning (the
+    // data lives in memory, not the URL): go back to the planner.
+    if (!plannerData.location) {
+      navigation.replace('Planner');
+      return undefined;
+    }
+
     const loadingAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(bounceValue, { toValue: -20, duration: 500, useNativeDriver: true }),
@@ -37,6 +45,7 @@ export default function LoadingScreen({ navigation, route }) {
           // Navigate to the empty-result screen instead of using Alert.alert.
           // React Native Web does not reliably display native Alert dialogs,
           // which can leave the user stuck on this loading screen.
+          clearTrip();
           navigation.replace('Result', {
             plans: [],
             emptyTitle: 'No Matching Places',
@@ -46,12 +55,16 @@ export default function LoadingScreen({ navigation, route }) {
           return;
         }
 
-        navigation.replace('Result', { plans, people: plannerData.people || 1 });
+        const trip = { plans, people: plannerData.people || 1, requestedHours: plannerData.duration };
+        // Lets the Trip page survive a browser refresh (see utils/tripStore.js).
+        saveTrip(trip);
+        navigation.replace('Result', trip);
       } catch (error) {
         if (cancelled) return;
 
         // Show request errors in the app UI as well, so web users are never
         // left looking at an infinite spinner when a request fails.
+        clearTrip();
         navigation.replace('Result', {
           plans: [],
           emptyTitle: 'Could Not Generate Itinerary',

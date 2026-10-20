@@ -5,6 +5,9 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
+# How far past the requested duration a plan may run before it is flagged.
+DURATION_GRACE_MINUTES = 15
+
 
 def _normalize_city_name(value: Any) -> str:
     if not value:
@@ -191,5 +194,7 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
         "total_satisfaction_score": schedule["total_satisfaction_score"],
         "total_duration_minutes": schedule["total_duration_minutes"],
         # Reported so the frontend can warn the user; the plan itself is not cut short.
-        "exceeds_duration": schedule["total_duration_minutes"] > int(user_context.get("total_time_minutes") or 0),
+        # A few minutes of travel over the limit is not worth a warning.
+        "exceeds_duration": schedule["total_duration_minutes"]
+        > int(user_context.get("total_time_minutes") or 0) + DURATION_GRACE_MINUTES,
     }

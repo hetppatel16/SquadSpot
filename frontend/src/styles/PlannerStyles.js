@@ -16,6 +16,23 @@ export const styles = StyleSheet.create({
     maxWidth: 560,
     alignSelf: 'center',
   },
+  // Wide-screen layout (see WIDE_LAYOUT_MIN_WIDTH in PlannerScreen).
+  scrollContentWide: {
+    maxWidth: 1040,
+    paddingTop: 32,
+    paddingBottom: 48,
+  },
+  wideColumns: {
+    flexDirection: 'row',
+    gap: 40,
+  },
+  wideColumn: {
+    flex: 1,
+  },
+  inlinePlanButton: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -77,6 +94,9 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+    // Rounds the web focus ring drawn around this row (utils/webStyles.js).
+    borderRadius: 12,
+    paddingHorizontal: 8,
   },
   currencySymbol: {
     fontSize: 40,

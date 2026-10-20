@@ -9,9 +9,8 @@ import {
   StatusBar,
   SafeAreaView,
   Keyboard,
-  Alert,
-  Platform,
-  Modal
+  Modal,
+  useWindowDimensions
 } from 'react-native';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +21,12 @@ import { styles } from '../styles/PlannerStyles';
 import { validateBudget } from '../utils/Validations';
 import { searchCities } from '../services/api';
 import CustomSlider from '../components/CustomSlider';
+import { confirmAction, notify } from '../utils/feedback';
+
+// At this width (desktop browsers, tablets in landscape) the form is shown in
+// two columns with the Plan button below it; narrower screens keep the
+// single-column phone layout with the floating button.
+const WIDE_LAYOUT_MIN_WIDTH = 900;
 
 const parseDurationHours = (val) => {
   if (typeof val === 'number') return val;
@@ -34,6 +39,8 @@ const parseDurationHours = (val) => {
 
 export default function PlannerScreen({ navigation, route }) {
   const { user, logout, updateUser } = useAuth();
+  const { width } = useWindowDimensions();
+  const isWide = width >= WIDE_LAYOUT_MIN_WIDTH;
 
   // Prefer context user, fallback to route param or default
   const activeUser = user || route?.params?.user;
@@ -192,6 +199,7 @@ export default function PlannerScreen({ navigation, route }) {
     { id: 4, label: 'Chill', icon: 'coffee' },
     { id: 5, label: 'Shopping', icon: 'shopping-bag' },
     { id: 6, label: 'Culture', icon: 'landmark' },
+    { id: 7, label: 'Movies', icon: 'film' },
   ];
 
   const toggleVibe = (id) => {
@@ -208,9 +216,7 @@ export default function PlannerScreen({ navigation, route }) {
   const handleSaveProfile = async () => {
     const cleanName = profileNameDraft.trim();
     if (!cleanName) {
-      const message = 'Please enter your name.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Name Required', message);
+      notify('Name Required', 'Please enter your name.');
       return;
     }
 
@@ -218,13 +224,9 @@ export default function PlannerScreen({ navigation, route }) {
       setIsSavingProfile(true);
       await updateUser({ full_name: cleanName });
       setIsEditingProfile(false);
-      const message = 'Your profile has been updated.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Profile Updated', message);
+      notify('Profile Updated', 'Your profile has been updated.', 'success');
     } catch (error) {
-      const message = error.message || 'Unable to update your profile.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Update Failed', message);
+      notify('Update Failed', error.message || 'Unable to update your profile.');
     } finally {
       setIsSavingProfile(false);
     }
@@ -232,28 +234,43 @@ export default function PlannerScreen({ navigation, route }) {
 
   const handleLogout = async () => {
     setShowProfileModal(false);
-    if (Platform.OS === 'web') {
-      const confirm = window.confirm('Are you sure you want to log out?');
-      if (confirm) {
-        await logout();
-      }
-    } else {
-      Alert.alert(
-        'Sign Out',
-        'Are you sure you want to sign out of SquadSpot?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign Out',
-            style: 'destructive',
-            onPress: async () => {
-              await logout();
-            },
-          },
-        ]
-      );
+    const confirmed = await confirmAction({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out of SquadSpot?',
+      confirmText: 'Sign Out',
+      destructive: true,
+    });
+    if (confirmed) {
+      await logout();
     }
   };
+
+  const handlePlan = () => {
+    const normalizedLocation = location.trim();
+    if (!normalizedLocation) {
+      notify('City Required', 'Please choose a city before planning your trip.');
+      return;
+    }
+    if (!validateBudget(budget)) {
+      notify('Invalid Budget', 'Please enter a valid budget greater than ₹0.');
+      return;
+    }
+    navigation.navigate('Loading', {
+      location: normalizedLocation,
+      budget: budget.trim(),
+      people,
+      selectedVibes,
+      duration,
+      mood: selectedVibes.includes(4) ? 'chill' : null,
+    });
+  };
+
+  const planButton = (
+    <TouchableOpacity style={styles.planButton} onPress={handlePlan} accessibilityRole="button">
+      <Text style={styles.planButtonText}>Plan My Day</Text>
+      <MaterialIcons name="auto-awesome" size={24} color="#102217" />
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
@@ -265,7 +282,10 @@ export default function PlannerScreen({ navigation, route }) {
       />
 
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, isWide && styles.scrollContentWide]}
+          showsVerticalScrollIndicator={false}
+        >
 
           {/* Header */}
           <View style={styles.header}>
@@ -279,12 +299,19 @@ export default function PlannerScreen({ navigation, route }) {
               style={styles.profileButton}
               onPress={() => setShowProfileModal(true)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Open profile menu"
             >
               <View style={styles.profileImagePlaceholder}>
                 <Text style={styles.profileInitials}>{initials}</Text>
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* Wide screens: two columns (where & budget | group, time & interests). */}
+          <View style={isWide ? styles.wideColumns : null}>
+          {/* zIndex keeps the city dropdown above the right-hand column. */}
+          <View style={isWide ? [styles.wideColumn, { zIndex: 10 }] : null}>
 
           {/* Location Input Section */}
           <View style={[styles.section, { zIndex: 100 }]}>
@@ -300,7 +327,7 @@ export default function PlannerScreen({ navigation, route }) {
                 placeholderTextColor="rgba(255,255,255,0.3)"
               />
               {location.length > 0 && (
-                <TouchableOpacity onPress={clearCity}>
+                <TouchableOpacity onPress={clearCity} accessibilityRole="button" accessibilityLabel="Clear city">
                   <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.3)" />
                 </TouchableOpacity>
               )}
@@ -380,6 +407,9 @@ export default function PlannerScreen({ navigation, route }) {
             </Text>
           </View>
 
+          </View>
+          <View style={isWide ? styles.wideColumn : null}>
+
           {/* Group Size & Duration Row */}
           <View style={styles.rowSection}>
 
@@ -394,6 +424,8 @@ export default function PlannerScreen({ navigation, route }) {
                     persistDraft({ people: next });
                   }}
                   style={styles.counterButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fewer people"
                 >
                   <MaterialIcons name="remove" size={20} color="white" />
                 </TouchableOpacity>
@@ -405,6 +437,8 @@ export default function PlannerScreen({ navigation, route }) {
                     persistDraft({ people: next });
                   }}
                   style={styles.counterButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="More people"
                 >
                   <MaterialIcons name="add" size={20} color="white" />
                 </TouchableOpacity>
@@ -443,6 +477,8 @@ export default function PlannerScreen({ navigation, route }) {
                     key={vibe.id}
                     style={[styles.vibeChip, isSelected && styles.vibeChipSelected]}
                     onPress={() => toggleVibe(vibe.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
                   >
                     <FontAwesome5
                       name={vibe.icon}
@@ -459,47 +495,22 @@ export default function PlannerScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* Spacer */}
-          <View style={{ height: 100 }} />
+          </View>
+          </View>
+
+          {/* Wide screens: the button sits under the form. Phones: floating button below. */}
+          {isWide ? (
+            <View style={styles.inlinePlanButton}>{planButton}</View>
+          ) : (
+            <View style={{ height: 100 }} />
+          )}
 
         </ScrollView>
 
-        {/* FAB */}
-        <View style={styles.fabContainer}>
-          <TouchableOpacity
-            style={styles.planButton}
-            onPress={() => {
-              const normalizedLocation = location.trim();
-              if (!normalizedLocation) {
-                if (Platform.OS === 'web') window.alert('Please choose a city before planning your trip.');
-                else Alert.alert('City Required', 'Please choose a city before planning your trip.');
-                return;
-              }
-              if (!validateBudget(budget)) {
-                const message = 'Please enter a valid budget greater than ₹0.';
-
-                if (Platform.OS === 'web') {
-                  window.alert(message);
-                } else {
-                  Alert.alert('Invalid Budget', message);
-                }
-
-                return;
-              }
-              navigation.navigate('Loading', {
-                location: normalizedLocation,
-                budget: budget.trim(),
-                people,
-                selectedVibes,
-                duration,
-                mood: selectedVibes.includes(4) ? 'chill' : null,
-              });
-            }}
-          >
-            <Text style={styles.planButtonText}>Plan My Day</Text>
-            <MaterialIcons name="auto-awesome" size={24} color="#102217" />
-          </TouchableOpacity>
-        </View>
+        {/* Floating button (narrow screens); hidden while the profile menu is open. */}
+        {!isWide && !showProfileModal && (
+          <View style={styles.fabContainer}>{planButton}</View>
+        )}
 
       </SafeAreaView>
 

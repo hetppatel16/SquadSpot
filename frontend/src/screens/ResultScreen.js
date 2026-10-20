@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,32 +6,53 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Dimensions,
   StatusBar,
   SafeAreaView,
-  Alert,
   Linking,
-  Platform
+  Platform,
+  useWindowDimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 
-import { styles, CARD_WIDTH, SPACING } from "../styles/ResultStyles";
+import { styles } from "../styles/ResultStyles";
+import { confirmAction, notify } from '../utils/feedback';
+import { loadTrip } from '../utils/tripStore';
 
-const { width } = Dimensions.get('window');
+const CARD_GAP = 20;
+const WIDE_LAYOUT_MIN_WIDTH = 900;
+
+// Web: the whole page scrolls and every stop is visible in the card.
+// Mobile: fixed-height cards you swipe between, each scrolling on its own.
+const isWeb = Platform.OS === 'web';
+const Page = isWeb ? ScrollView : View;
+const StopList = isWeb ? View : ScrollView;
+
+const formatDuration = (minutes) => {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest} min`;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+};
 
 export default function ResultScreen({ navigation, route }) {
   const [activeSlide, setActiveSlide] = useState(0);
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.min(width * 0.85, width >= WIDE_LAYOUT_MIN_WIDTH ? 640 : 460);
+  const sidePadding = Math.max((width - cardWidth) / 2, 20);
 
-  // 1. Extract the raw navigation parameters safely
-  const rawParams = route.params || {};
+  // 1. Use the trip passed by the loading screen; after a browser refresh
+  //    (no navigation params) fall back to the trip saved in tripStore.
+  const passedParams = route.params || {};
+  const hasPassedTrip = Array.isArray(passedParams.plans) || passedParams.emptyTitle;
+  const rawParams = hasPassedTrip ? passedParams : (loadTrip() || {});
   const incomingPlans = rawParams.plans || [];
 
   // 2. Clear out any format mismatches using a robust normalizer loop
   const cleanedPlans = incomingPlans.map((plan, index) => {
     // Look across all common backend keys to find your timeline array
     const rawStops = plan.stops || plan.timeline || plan.items || [];
-    
+
     // Look across all common keys to find your cost number
     const cost = plan.totalEst ?? plan.total_cost ?? plan.cost_breakdown?.total ?? "0";
 
@@ -41,7 +62,9 @@ export default function ResultScreen({ navigation, route }) {
       totalEst: cost,
       costDisplay: plan.costDisplay || (plan.unknownCostCount > 0 ? (Number(cost) > 0 ? `₹${cost}+` : "Not listed") : `₹${cost}`),
       unknownCostCount: Number(plan.unknownCostCount || plan.cost_breakdown?.unknown_count || 0),
-      image: plan.image || rawStops[0]?.image || rawStops[0]?.image_url || 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
+      exceedsDuration: Boolean(plan.exceedsDuration),
+      totalDurationMinutes: Number(plan.totalDurationMinutes || 0),
+      image: plan.image || rawStops.find(stop => stop.image || stop.image_url)?.image || rawStops.find(stop => stop.image_url)?.image_url || null,
       stops: rawStops.map((stop, i) => ({
         icon: stop.icon || (stop.category?.toLowerCase().includes('food') || stop.type?.toLowerCase().includes('food') ? 'restaurant' : 'park'),
         title: stop.title || stop.name || `Stop ${i + 1}`,
@@ -63,6 +86,30 @@ export default function ResultScreen({ navigation, route }) {
 
   // Never replace a missing/empty itinerary with unrelated demo attractions.
   const plans = cleanedPlans.filter(plan => plan.stops.length > 0);
+  const requestedHours = Number(rawParams.requestedHours) || null;
+
+  const durationWarning = (plan) => (
+    plan.exceedsDuration && requestedHours
+      ? `This plan takes about ${formatDuration(plan.totalDurationMinutes)}, longer than the ${requestedHours} h you chose. You can skip a stop or choose a longer duration.`
+      : null
+  );
+
+  // Remind the user once when the trip opens if it runs long.
+  const firstWarning = plans.map(durationWarning).find(Boolean);
+  useEffect(() => {
+    if (firstWarning) notify('This plan runs long', firstWarning, 'info');
+  }, [firstWarning]);
+
+  // A trip page opened directly (bookmark, refresh) has no screen to go back to.
+  const goBack = () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Planner'));
+
+  const openRoute = async (url) => {
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      notify('Navigation Error', 'Unable to open Google Maps on this device.');
+    }
+  };
 
   const handleNavigate = async (plan) => {
     const stops = plan.stops;
@@ -75,9 +122,7 @@ export default function ResultScreen({ navigation, route }) {
     ));
 
     if (stops.length === 0 || !hasValidCoordinates) {
-      const message = 'This itinerary is missing exact map coordinates. Please generate it again.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Route Unavailable', message);
+      notify('Route Unavailable', 'This itinerary is missing exact map coordinates. Please generate it again.');
       return;
     }
 
@@ -105,49 +150,46 @@ export default function ResultScreen({ navigation, route }) {
       url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypointParameter}&travelmode=driving`;
 
       if (allWaypoints.length > maxWaypoints) {
-        const message = `Google Maps can include only ${maxWaypoints} intermediate stops on this device. Open the first ${maxStopsInOneRoute} stops as one route?`;
-        if (Platform.OS === 'web') {
-          if (!window.confirm(message)) return;
-        } else {
-          Alert.alert('Route Stop Limit', message, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Route', onPress: () => Linking.openURL(url).catch(() => Alert.alert('Navigation Error', 'Unable to open Google Maps on this device.')) }
-          ]);
-          return;
-        }
+        const confirmed = await confirmAction({
+          title: 'Route Stop Limit',
+          message: `Google Maps can include only ${maxWaypoints} intermediate stops on this device. Open the first ${maxStopsInOneRoute} stops as one route?`,
+          confirmText: 'Open Route',
+        });
+        if (!confirmed) return;
       }
     }
 
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      const message = 'Unable to open Google Maps on this device.';
-      if (Platform.OS === 'web') window.alert(message);
-      else Alert.alert('Navigation Error', message);
-    }
+    await openRoute(url);
   };
 
   const handleScroll = (event) => {
-    const slideSize = CARD_WIDTH + 20; 
+    const slideSize = cardWidth + CARD_GAP;
     const index = event.nativeEvent.contentOffset.x / slideSize;
     setActiveSlide(Math.round(index));
   };
+
+  const backButton = (
+    <TouchableOpacity onPress={goBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Back to planner">
+      <MaterialIcons name="arrow-back" size={28} color="white" />
+    </TouchableOpacity>
+  );
 
   if (plans.length === 0) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
         <SafeAreaView style={styles.safeArea}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={28} color="white" />
-          </TouchableOpacity>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-            <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' }}>
+          <View style={[styles.header, isWeb && styles.headerCompact]}>{backButton}</View>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>
               {rawParams.emptyTitle || 'No Itinerary Available'}
             </Text>
-            <Text style={{ color: '#b8c5bd', textAlign: 'center', marginTop: 12 }}>
-              {rawParams.emptyMessage || 'No verified places were returned for these preferences. Go back and try another selection.'}
+            <Text style={styles.emptyMessage}>
+              {rawParams.emptyMessage || 'No trip has been planned yet. Go back and choose your city and interests.'}
             </Text>
+            <TouchableOpacity style={styles.emptyAction} onPress={() => navigation.navigate('Planner')} accessibilityRole="button">
+              <Text style={styles.emptyActionText}>Plan a trip</Text>
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </View>
@@ -164,11 +206,10 @@ export default function ResultScreen({ navigation, route }) {
       </View>
 
       <SafeAreaView style={styles.safeArea}>
+        <Page style={styles.page} {...(isWeb ? { contentContainerStyle: styles.pageContent } : {})}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={28} color="white" />
-          </TouchableOpacity>
+        <View style={[styles.header, isWeb && styles.headerCompact]}>
+          {backButton}
           <View style={styles.headerCenter}>
             <Text style={styles.headerLabel}>YOUR TRIP</Text>
           </View>
@@ -179,19 +220,27 @@ export default function ResultScreen({ navigation, route }) {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: SPACING - 10, paddingVertical: 20 }}
+          contentContainerStyle={{ paddingHorizontal: sidePadding - CARD_GAP / 2, paddingVertical: 20 }}
           decelerationRate="fast"
-          snapToInterval={CARD_WIDTH + 20}
+          snapToInterval={cardWidth + CARD_GAP}
           onScroll={handleScroll}
           scrollEventThrottle={16}
         >
-          {plans.map((plan) => (
-            <View key={plan.id} style={[styles.cardContainer, { marginRight: 20 }]}>
-              <View style={styles.card}>
-                
+          {plans.map((plan) => {
+            const warning = durationWarning(plan);
+            return (
+            <View key={plan.id} style={[styles.cardContainer, isWeb && styles.cardContainerWeb, { width: cardWidth, marginRight: CARD_GAP }]}>
+              <View style={[styles.card, !isWeb && styles.cardMobile]}>
+
                 {/* Image Header */}
                 <View style={styles.cardImageContainer}>
-                  <Image source={{ uri: plan.image }} style={styles.cardImage} />
+                  {plan.image ? (
+                    <Image source={{ uri: plan.image }} style={styles.cardImage} />
+                  ) : (
+                    <LinearGradient colors={['#1c3829', '#0b1a12']} style={styles.cardImage}>
+                      <MaterialIcons name="location-city" size={72} color="rgba(13,242,105,0.18)" style={styles.placeholderIcon} />
+                    </LinearGradient>
+                  )}
                   <LinearGradient colors={['transparent', '#15291f']} style={styles.imageGradient} />
                   <View style={styles.cardHeaderContent}>
                     <Text style={styles.planTitle}>{plan.title}</Text>
@@ -203,8 +252,15 @@ export default function ResultScreen({ navigation, route }) {
                   </View>
                 </View>
 
+                {warning && (
+                  <View style={styles.durationBanner} accessibilityRole="alert">
+                    <MaterialIcons name="schedule" size={18} color="#fbbf24" style={{ marginRight: 8 }} />
+                    <Text style={styles.durationBannerText}>{warning}</Text>
+                  </View>
+                )}
+
                 {/* Stops Timeline list loop */}
-                <ScrollView style={styles.cardBody} showsVerticalScrollIndicator={false}>
+                <StopList style={[styles.cardBody, isWeb ? styles.cardBodyWeb : styles.cardBodyMobile]} {...(isWeb ? {} : { showsVerticalScrollIndicator: false })}>
                   {plan.stops.map((stop, i) => {
                     const isLast = i === plan.stops.length - 1;
                     return (
@@ -225,20 +281,20 @@ export default function ResultScreen({ navigation, route }) {
                               </Text>
                             </View>
                           </View>
-                          <Text style={stop.styles?.stopTime || styles.stopTime}>{stop.time} {'\u2022'} {stop.type}</Text>
-                          
+                          <Text style={stop.styles?.stopTime || styles.stopTime}>{stop.time} {'•'} {stop.type}</Text>
+
                           {/* Inner Row Container for Image and Description Alignment */}
                           <View style={{ flexDirection: 'row', marginTop: 6, alignItems: 'flex-start' }}>
                             {stop.image && (
-                              <Image 
-                                source={{ uri: stop.image }} 
-                                style={{ 
-                                  width: 65, 
-                                  height: 65, 
-                                  borderRadius: 8, 
+                              <Image
+                                source={{ uri: stop.image }}
+                                style={{
+                                  width: 65,
+                                  height: 65,
+                                  borderRadius: 8,
                                   marginRight: 10,
                                   backgroundColor: 'rgba(255,255,255,0.05)'
-                                }} 
+                                }}
                                 resizeMode="cover"
                               />
                             )}
@@ -251,13 +307,14 @@ export default function ResultScreen({ navigation, route }) {
                       </View>
                     );
                   })}
-                </ScrollView>
+                </StopList>
 
                 {/* Footer Action Navigation */}
                 <View style={styles.cardFooter}>
                   <TouchableOpacity
                     style={styles.navigateButton}
                     onPress={() => handleNavigate(plan)}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.navigateText}>Navigate This Route</Text>
                     <View style={styles.navIconCircle}>
@@ -268,7 +325,8 @@ export default function ResultScreen({ navigation, route }) {
 
               </View>
             </View>
-          ))}
+            );
+          })}
         </ScrollView>
 
         {/* Pagination indicators */}
@@ -277,6 +335,7 @@ export default function ResultScreen({ navigation, route }) {
             <View key={index} style={[styles.dot, activeSlide === index && styles.activeDot]} />
           ))}
         </View>
+        </Page>
       </SafeAreaView>
     </View>
   );
