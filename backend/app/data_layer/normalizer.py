@@ -2,10 +2,16 @@
 # Filters closed, over-budget; estimates travel times; normalizes ratings; sets preference/mood weights.
 
 import json
+import re
 from typing import Any, Dict, List
 
-from app.constraint_engine.constraints import check_time_window
+from app.constraint_engine.constraints import budget_cost, budget_with_margin, check_time_window
+from app.data_layer.cost_estimates import build_category_ranges, estimate_range
 from app.data_layer.repository import get_all_pois
+
+# Two places this close whose names start with the same word are treated as one place.
+DUPLICATE_DISTANCE_KM = 0.075
+_NAME_STOPWORDS = {"the", "and", "of", "at", "in", "for", "shri", "shree", "sri"}
 
 
 def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -82,9 +88,11 @@ def normalize(user_context: Dict[str, Any]) -> List[Dict[str, Any]]:
     preferences = [p.lower() for p in (user_context.get("preferences") or [])]
     mood = (user_context.get("mood") or "").lower()
 
+    places = [_poi_to_dict(poi) for poi in raw]
+    city_cost_ranges = build_category_ranges(places)
+
     out = []
-    for poi in raw:
-        d = _poi_to_dict(poi)
+    for d in places:
         place_categories = {
             str(category).lower() for category in d.get("categories", [])
         }
@@ -102,13 +110,15 @@ def normalize(user_context: Dict[str, Any]) -> List[Dict[str, Any]]:
             continue
 
         is_preferred = bool(place_categories.intersection(preferences))
-        
-        # Soft budget cutoff for preferred categories to prevent pruning them when budget is tight.
-        max_cost = max(budget, 500.0) if is_preferred else budget
-        # Unknown admission costs should not be mistaken for free or used
-        # to exclude a place. They are displayed as unavailable in the UI.
-        if d["cost_estimate"] is not None and d["cost_estimate"] > max_cost:
+
+        # Unknown prices are never treated as free: they get an estimated range,
+        # labelled as an estimate, whose low end counts toward the budget.
+        d["cost_estimate_range"] = (
+            estimate_range(d["category"], city_cost_ranges) if d["cost_estimate"] is None else None
+        )
+        if budget_cost(d) > budget_with_margin(budget):
             continue
+        d["over_budget"] = budget_cost(d) > budget
         d["distance_from_user_km"] = _distance_km(user_lat, user_lon, d["latitude"], d["longitude"])
         if d["distance_from_user_km"] > max_distance_km:
             continue
@@ -116,4 +126,34 @@ def normalize(user_context: Dict[str, Any]) -> List[Dict[str, Any]]:
         d["preference_weight"] = 1.0 if is_preferred else 0.3
         d["travel_from_user_minutes"] = _travel_minutes(user_lat, user_lon, d["latitude"], d["longitude"])
         out.append(d)
-    return out
+    return _drop_near_duplicates(out)
+
+
+def _main_name_word(name: str) -> str:
+    words = [w for w in re.findall(r"[a-z0-9]+", (name or "").lower()) if w not in _NAME_STOPWORDS]
+    return words[0] if words else ""
+
+
+def _drop_near_duplicates(places: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Keep one place from any pair within 75 m whose names start with the same word,
+    e.g. "Baroda Museum" and "Baroda Museum & Picture Gallery" from two data sources.
+    The higher-rated one (then the one with a listed price) is kept.
+    """
+    ranked = sorted(
+        places,
+        key=lambda p: (p["normalized_rating"], p["cost_estimate"] is not None),
+        reverse=True,
+    )
+    kept: List[Dict[str, Any]] = []
+    for place in ranked:
+        word = _main_name_word(place["name"])
+        is_duplicate = word and any(
+            _main_name_word(other["name"]) == word
+            and _distance_km(place["latitude"], place["longitude"], other["latitude"], other["longitude"])
+            <= DUPLICATE_DISTANCE_KM
+            for other in kept
+        )
+        if not is_duplicate:
+            kept.append(place)
+    return kept

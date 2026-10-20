@@ -28,10 +28,20 @@ def _empty_itinerary(user_context: Dict[str, Any], reason: str) -> Dict[str, Any
         "message": reason,
         "ordered_places": [],
         "timeline": [],
-        "cost_breakdown": {"total": 0.0, "per_stop": []},
+        "cost_breakdown": {"total": 0.0, "per_stop": [], "unknown_count": 0, "estimated_min": 0.0, "estimated_max": 0.0},
         "route": [],
         "total_satisfaction_score": 0.0,
+        "total_duration_minutes": 0,
+        "exceeds_duration": False,
     }
+
+
+def _category_label(category: Any) -> str:
+    """Display label for a place category, e.g. "food" -> "Food"."""
+    value = str(category or "").strip()
+    if not value or value.lower() == "uncategorized":
+        return "Activity"
+    return value.title()
 
 
 def _no_matching_places_message(user_context: Dict[str, Any]) -> str:
@@ -113,7 +123,7 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
         best_route_ids,
         user_context,
         poi_lookup,
-        start_minutes=600,
+        start_minutes=user_context.get("start_time_minutes", 600),
     )
 
     ordered_places: List[Dict[str, Any]] = []
@@ -130,6 +140,8 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
         category = poi.get("category") or "Activity"
         raw_cost = poi.get("cost_estimate")
         cost = float(raw_cost) if raw_cost is not None else None
+        estimate = poi.get("cost_estimate_range")
+        arrival_label = stop["arrival_time"] + (" (next day)" if stop["next_day"] else "")
 
         ordered_places.append({
             "id": place_id,
@@ -143,10 +155,14 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
             "place_id": place_id,
             "name": poi["name"],
             "category": category,
-            "type": "Stop",
-            "time": stop["arrival_time"],
+            "type": _category_label(category),
+            "time": arrival_label,
+            "end_time": stop["departure_time"],
             "price": cost,
             "cost": cost,
+            # Shown as "Est. ₹low-high" when the real price is not listed.
+            "cost_estimate_range": list(estimate) if estimate else None,
+            "over_budget": bool(poi.get("over_budget")),
             "description": poi.get("description") or "Recommended based on your selected preferences.",
             "image_url": poi.get("primary_image_url"),
             "latitude": latitude,
@@ -167,7 +183,13 @@ def get_itinerary(user_context: Dict[str, Any]) -> Dict[str, Any]:
             "total": schedule["cost_breakdown"]["total"],
             "per_stop": [item["cost"] for item in schedule["cost_breakdown"]["per_stop"]],
             "unknown_count": schedule["cost_breakdown"]["unknown_count"],
+            # Sum of the estimated ranges for stops whose price is not listed.
+            "estimated_min": schedule["cost_breakdown"]["estimated_min"],
+            "estimated_max": schedule["cost_breakdown"]["estimated_max"],
         },
         "route": schedule["route"],
         "total_satisfaction_score": schedule["total_satisfaction_score"],
+        "total_duration_minutes": schedule["total_duration_minutes"],
+        # Reported so the frontend can warn the user; the plan itself is not cut short.
+        "exceeds_duration": schedule["total_duration_minutes"] > int(user_context.get("total_time_minutes") or 0),
     }

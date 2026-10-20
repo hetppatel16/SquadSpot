@@ -11,9 +11,12 @@ from app.data_layer.repository import (
     search_active_cities,
 )
 from app.core.security import get_current_user
+from app.constraint_engine.constraints import _to_minutes
 
 router = APIRouter(prefix="/api", tags=["itinerary"])
 logger = logging.getLogger(__name__)
+
+DEFAULT_START_MINUTES = 10 * 60  # 10:00
 
 
 @router.post("/itinerary", response_model=ItineraryResponse)
@@ -28,6 +31,7 @@ def post_itinerary(req: ItineraryRequest, current_user=Depends(get_current_user)
             "latitude": req.latitude,
             "longitude": req.longitude,
             "city": req.city,
+            "start_time_minutes": _to_minutes(req.start_time) if req.start_time else DEFAULT_START_MINUTES,
         }
         result = get_itinerary(ctx)
         return ItineraryResponse(**result)

@@ -4,7 +4,14 @@
 import math
 from typing import Any, Dict, List
 
-from app.constraint_engine.constraints import check_time_window, _to_minutes
+from app.constraint_engine.constraints import (
+    DAY_MINUTES,
+    _to_minutes,
+    budget_cost,
+    check_time_window,
+    budget_with_margin,
+    fits_night_limit,
+)
 
 # Weights for fitness; can move to config later.
 W_COVERAGE = 0.3
@@ -14,6 +21,9 @@ W_RATING = 0.15
 W_TRAVEL_PENALTY = 0.15
 W_WAITING_PENALTY = 0.1
 W_BUDGET_PENALTY = 0.1
+# Rewards filling the requested time; without it the per-stop averages above
+# would always prefer a single stop.
+W_TIME_USE = 0.1
 
 # Minutes per km for travel estimate (MVP heuristic).
 MIN_PER_KM = 2.0
@@ -74,7 +84,8 @@ def evaluate(
     rating_sum = 0.0
     travel_penalty_sum = 0.0
     waiting_penalty_sum = 0.0
-    
+    stops_after_midnight = 0
+
     covered_categories = set()
 
     for poi_id in route:
@@ -93,18 +104,20 @@ def evaluate(
         # Travel to this POI
         travel_m = _travel_minutes(prev_lat, prev_lon, poi["latitude"], poi["longitude"])
         total_minutes += travel_m
-        arrival_minutes = int(arrival_minutes + travel_m) % (24 * 60)
+        # Clock time keeps counting past midnight (e.g. 1470 = 00:30 next day).
+        arrival_minutes = int(arrival_minutes + travel_m)
         travel_penalty_sum += travel_m * 0.01  # small penalty per minute
+        time_of_day = arrival_minutes % DAY_MINUTES
 
         # Time window check
         open_t = poi.get("open_time", "00:00")
         close_t = poi.get("close_time", "23:59")
-        if not check_time_window(open_t, close_t, arrival_minutes):
+        if not check_time_window(open_t, close_t, time_of_day):
             waiting_penalty_sum += 100  # heavy penalty if closed
         else:
             open_m = _to_minutes(open_t)
-            if arrival_minutes < open_m:
-                waiting_penalty_sum += (open_m - arrival_minutes) * 0.02  # waiting
+            if time_of_day < open_m:
+                waiting_penalty_sum += (open_m - time_of_day) * 0.02  # waiting
 
         # Visit: add score components
         preference_sum += poi.get("preference_weight", 0.5)
@@ -121,16 +134,19 @@ def evaluate(
         else:
             mood_sum += 0.3  # small default
 
-        # Unknown admission costs are excluded from the numeric subtotal;
-        # they remain flagged as unknown in the returned cost breakdown.
-        cost = poi.get("cost_estimate")
-        total_cost += float(cost) if cost is not None else 0.0
+        # Unknown prices count with the low end of their estimated range.
+        total_cost += budget_cost(poi)
 
         # Use each place's stored visit duration instead of assuming every
         # attraction takes exactly one hour.
         visit_minutes = int(poi.get("avg_visit_duration_minutes") or 60)
         total_minutes += visit_minutes
-        arrival_minutes = (arrival_minutes + visit_minutes) % (24 * 60)
+        if arrival_minutes >= DAY_MINUTES:
+            stops_after_midnight += 1
+        departure_minutes = arrival_minutes + visit_minutes
+        if not fits_night_limit(departure_minutes, stops_after_midnight):
+            waiting_penalty_sum += 100  # treated like a closed place
+        arrival_minutes = departure_minutes
         prev_lat, prev_lon = poi["latitude"], poi["longitude"]
 
     n = len(route)
@@ -155,15 +171,20 @@ def evaluate(
     else:
         coverage_score = 1.0
         
-    # Soften budget penalty using relative ratio capped by a minimum comparison baseline (500)
-    budget_penalty = max(0.0, total_cost - budget) / max(budget, 500.0)
+    # Going over budget costs in proportion to the overspend; going beyond the
+    # allowed margin outweighs every reward, so such routes are effectively rejected.
+    budget_penalty = max(0.0, total_cost - budget) / budget
+    if total_cost > budget_with_margin(budget):
+        budget_penalty += 10.0
     time_penalty = max(0.0, total_minutes - total_time_minutes) * 0.05
+    time_use = min(1.0, total_minutes / total_time_minutes) if total_time_minutes else 0.0
 
     fitness = (
         W_COVERAGE * coverage_score
         + W_PREFERENCE * preference_score
         + W_MOOD * mood_score
         + W_RATING * rating_score
+        + W_TIME_USE * time_use
         - W_TRAVEL_PENALTY * min(travel_penalty_sum, 50.0)
         - W_WAITING_PENALTY * min(waiting_penalty_sum, 50.0)
         - W_BUDGET_PENALTY * budget_penalty

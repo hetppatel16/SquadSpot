@@ -1,9 +1,21 @@
 # Custom GA: chromosome = ordered list of POI ids. Fitness = scoring_engine.evaluate(route).
 
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.scoring_engine.fitness import evaluate as fitness_evaluate
+
+MAX_STOPS = 8
+
+
+def _stop_range(total_time_minutes: int, candidate_count: int) -> Tuple[int, int]:
+    """Allowed stop count: 1-3 for outings up to 3 hours, else about one stop per 90 minutes."""
+    if total_time_minutes <= 180:
+        low, high = 1, 3
+    else:
+        low = min(MAX_STOPS, round(total_time_minutes / 90))
+        high = min(MAX_STOPS, low + 1)
+    return min(low, candidate_count), min(high, candidate_count)
 
 
 def run_ga(
@@ -25,11 +37,9 @@ def run_ga(
     
     # Dynamic Route Sizing based on Total Trip Duration
     total_time_minutes = user_context.get("total_time_minutes", 240)
-    target_route_size = min(8, len(ids), max(2, round(total_time_minutes / 90)))
+    min_stops, max_stops = _stop_range(total_time_minutes, len(ids))
 
     def random_route() -> List[int]:
-        min_stops = min(len(ids), target_route_size)
-        max_stops = min(len(ids), target_route_size + 1)
         n = random.randint(min_stops, max_stops)
         return random.sample(ids, n)
 
@@ -47,9 +57,7 @@ def run_ga(
             return list(a or b)
             
         # Determine child length dynamically to protect targeted cluster sizes
-        max_len = min(len(ids), target_route_size + 1)
-        min_len = min(len(ids), target_route_size)
-        target_len = random.randint(min_len, max_len)
+        target_len = random.randint(min_stops, max_stops)
         
         start = random.choice(a)
         child = [start]

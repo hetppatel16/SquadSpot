@@ -49,7 +49,9 @@ export default function PlannerScreen({ navigation, route }) {
 
   const initials = getInitials(fullName);
 
-  const [location, setLocation] = useState('');
+  // SquadSpot was built for Vadodara, so it is the starting city; any other
+  // active city can still be searched. A saved draft city takes precedence.
+  const [location, setLocation] = useState('Vadodara, Gujarat');
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredCities, setFilteredCities] = useState([]);
   // City search states

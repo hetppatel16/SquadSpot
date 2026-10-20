@@ -347,6 +347,11 @@ export async function fetchItinerary(userContext, accessToken) {
   }
 }
 
+/** "₹150–400", or "₹250" when both ends are equal. */
+function formatCostRange(low, high) {
+  return low === high ? `₹${low}` : `₹${low}–${high}`;
+}
+
 /**
  * 8. Normalizer: Maps raw backend data objects cleanly into frontend layout shapes
  */
@@ -360,9 +365,18 @@ export function transformToPlan(apiResponse) {
     const rawTotalCost = plan.cost_breakdown?.total ?? plan.totalEst ?? 0;
     const unknownCostCount = Number(plan.cost_breakdown?.unknown_count || 0);
     const totalCostNumber = Number(rawTotalCost) || 0;
-    const costDisplay = unknownCostCount > 0
-      ? (totalCostNumber > 0 ? `₹${totalCostNumber}+` : "Not listed")
-      : `₹${totalCostNumber}`;
+    // Stops without a listed price carry an estimated range from the backend.
+    const estimatedMin = Number(plan.cost_breakdown?.estimated_min || 0);
+    const estimatedMax = Number(plan.cost_breakdown?.estimated_max || 0);
+    let costDisplay;
+    if (estimatedMax > 0) {
+      const estimate = `est. ${formatCostRange(estimatedMin, estimatedMax)}`;
+      costDisplay = totalCostNumber > 0 ? `₹${totalCostNumber} + ${estimate}` : estimate;
+    } else if (unknownCostCount > 0) {
+      costDisplay = totalCostNumber > 0 ? `₹${totalCostNumber}+` : "Not listed";
+    } else {
+      costDisplay = `₹${totalCostNumber}`;
+    }
 
     // Older API responses kept coordinates only in ordered_places. Use those
     // as a compatibility fallback while preferring coordinates on each stop.
@@ -391,11 +405,16 @@ export function transformToPlan(apiResponse) {
           type: stop.type || stop.category || "Activity",
           time: stop.time || "Flexible",
           price: (() => {
+            const overBudget = stop.over_budget ? ' · over budget' : '';
             const rawPrice = stop.price ?? stop.cost ?? null;
-            if (rawPrice === null || rawPrice === undefined) return "Cost not listed";
             const amount = Number(rawPrice);
-            if (!Number.isFinite(amount)) return "Cost not listed";
-            return amount === 0 ? "Free" : `~₹${amount}`;
+            if (rawPrice === null || rawPrice === undefined || !Number.isFinite(amount)) {
+              const range = stop.cost_estimate_range;
+              if (!Array.isArray(range)) return "Cost not listed";
+              const [low, high] = range.map(Number);
+              return (high === 0 ? 'Likely free' : `Est. ${formatCostRange(low, high)}`) + overBudget;
+            }
+            return (amount === 0 ? "Free" : `~₹${amount}`) + overBudget;
           })(),
           desc: stop.description || stop.desc || "No description details provided.",
           image: stop.image_url || stop.image || null,

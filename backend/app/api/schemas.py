@@ -31,9 +31,16 @@ class ItineraryRequest(BaseModel):
     )
     preferences: List[str] = Field(default_factory=list, description="e.g. food, movie, culture")
     mood: Optional[str] = Field(None, description="e.g. relaxed, adventurous")
-    latitude: float = Field(..., description="User location lat")
-    longitude: float = Field(..., description="User location lon")
+    # Optional: the itinerary is planned from the selected city's centre.
+    # Defaults to Vadodara, the city SquadSpot was first built for.
+    latitude: float = Field(22.3072, description="User location lat")
+    longitude: float = Field(73.1812, description="User location lon")
     city: Optional[str] = Field(None, description="Selected city name")
+    start_time: Optional[str] = Field(
+        None,
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="Outing start time as HH:MM (defaults to 10:00)",
+    )
 
 
 class ItineraryResponse(BaseModel):
@@ -44,3 +51,5 @@ class ItineraryResponse(BaseModel):
     cost_breakdown: dict
     route: List[dict]
     total_satisfaction_score: float
+    total_duration_minutes: int = Field(0, description="Minutes from start to leaving the last stop")
+    exceeds_duration: bool = Field(False, description="True when the plan runs longer than requested")
