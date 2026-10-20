@@ -1,4 +1,4 @@
-﻿# Build timeline (arrival/departure per stop), cost breakdown, route summary, total score.
+# Build timeline (arrival/departure per stop), cost breakdown, route summary, total score.
 
 from typing import Any, Dict, List
 
@@ -16,7 +16,7 @@ def build_schedule(
     Returns: { "timeline": [...], "cost_breakdown": {...}, "route": [...], "total_satisfaction_score": float }
     """
     timeline = []
-    cost_breakdown = {"total": 0.0, "per_stop": []}
+    cost_breakdown = {"total": 0.0, "per_stop": [], "unknown_count": 0}
     route_summary = []
     user_lat = user_context.get("latitude", 0.0)
     user_lon = user_context.get("longitude", 0.0)
@@ -30,7 +30,8 @@ def build_schedule(
         travel_m = _travel_minutes(prev_lat, prev_lon, poi["latitude"], poi["longitude"])
         arrival_m += int(travel_m)
         arrival_m = arrival_m % (24 * 60)
-        depart_m = arrival_m + 60  # 60 min visit
+        visit_minutes = int(poi.get("avg_visit_duration_minutes") or 60)
+        depart_m = arrival_m + visit_minutes
         timeline.append({
             "poi_id": poi_id,
             "name": poi.get("name", ""),
@@ -39,8 +40,16 @@ def build_schedule(
             "arrival_time": _minutes_to_hhmm(arrival_m),
             "departure_time": _minutes_to_hhmm(depart_m),
         })
-        cost_breakdown["per_stop"].append({"poi_id": poi_id, "cost": poi.get("cost_estimate", 0)})
-        cost_breakdown["total"] += poi.get("cost_estimate", 0)
+        stop_cost = poi.get("cost_estimate")
+        cost_breakdown["per_stop"].append({
+            "poi_id": poi_id,
+            "cost": stop_cost,
+            "cost_known": stop_cost is not None,
+        })
+        if stop_cost is None:
+            cost_breakdown["unknown_count"] += 1
+        else:
+            cost_breakdown["total"] += float(stop_cost)
         route_summary.append({"poi_id": poi_id, "name": poi.get("name", ""), "lat": poi["latitude"], "lon": poi["longitude"]})
         prev_lat, prev_lon = poi["latitude"], poi["longitude"]
         arrival_m = depart_m

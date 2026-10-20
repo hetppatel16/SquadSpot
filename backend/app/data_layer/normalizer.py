@@ -41,8 +41,15 @@ def _poi_to_dict(poi) -> Dict[str, Any]:
         "latitude": float(poi.latitude),
         "longitude": float(poi.longitude),
         "category": poi.category,
+        "categories": list(getattr(poi, "categories", []) or [poi.category]),
+        "address": getattr(poi, "address", None),
+        "avg_visit_duration_minutes": int(
+            getattr(poi, "avg_visit_duration_minutes", 60) or 60
+        ),
         "rating": float(poi.rating),
-        "cost_estimate": float(poi.cost_estimate),
+        "cost_estimate": (
+            float(poi.cost_estimate) if poi.cost_estimate is not None else None
+        ),
         "open_time": poi.open_time,
         "close_time": poi.close_time,
         "mood_tags": mood,
@@ -57,7 +64,13 @@ def normalize(user_context: Dict[str, Any]) -> List[Dict[str, Any]]:
     Fetch all POIs, filter closed/over-budget, add travel_from_user, preference_weight, mood weight.
     Returns list of dicts (POI data) for greedy_filter and downstream.
     """
-    raw = get_all_pois()
+    # Never recommend places from another city when a city has not been
+    # resolved. The chosen city's city_id is the source of truth.
+    city_id = user_context.get("city_id")
+    if not city_id:
+        return []
+
+    raw = get_all_pois(city_id=city_id)
     user_lat = user_context.get("latitude", 0.0)
     user_lon = user_context.get("longitude", 0.0)
     budget_val = user_context.get("budget")
@@ -72,11 +85,29 @@ def normalize(user_context: Dict[str, Any]) -> List[Dict[str, Any]]:
     out = []
     for poi in raw:
         d = _poi_to_dict(poi)
-        is_preferred = d["category"].lower() in preferences
+        place_categories = {
+            str(category).lower() for category in d.get("categories", [])
+        }
+        place_vibes = {
+            str(tag).lower() for tag in (d.get("mood_tags") or [])
+        }
+
+        # Selected categories are filters, not just soft ranking hints. This
+        # prevents a Food request from being filled with unrelated Culture POIs.
+        if preferences and not place_categories.intersection(preferences):
+            continue
+
+        # Chill is represented as a vibe in the database, not a category.
+        if mood and mood not in place_vibes:
+            continue
+
+        is_preferred = bool(place_categories.intersection(preferences))
         
         # Soft budget cutoff for preferred categories to prevent pruning them when budget is tight.
         max_cost = max(budget, 500.0) if is_preferred else budget
-        if d["cost_estimate"] > max_cost:
+        # Unknown admission costs should not be mistaken for free or used
+        # to exclude a place. They are displayed as unavailable in the UI.
+        if d["cost_estimate"] is not None and d["cost_estimate"] > max_cost:
             continue
         d["distance_from_user_km"] = _distance_km(user_lat, user_lon, d["latitude"], d["longitude"])
         if d["distance_from_user_km"] > max_distance_km:

@@ -1,16 +1,23 @@
 # FastAPI routes: POST /itinerary, GET /pois, GET /health.
 
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.schemas import ItineraryRequest, ItineraryResponse
 from app.services.itinerary_service import get_itinerary
-from app.data_layer.repository import get_all_pois
+from app.data_layer.repository import (
+    get_all_pois,
+    search_active_cities,
+)
+from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api", tags=["itinerary"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/itinerary", response_model=ItineraryResponse)
-def post_itinerary(req: ItineraryRequest):
+def post_itinerary(req: ItineraryRequest, current_user=Depends(get_current_user)):
     """Generate itinerary from user constraints and preferences."""
     try:
         ctx = {
@@ -24,8 +31,12 @@ def post_itinerary(req: ItineraryRequest):
         }
         result = get_itinerary(ctx)
         return ItineraryResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Itinerary generation failed for an authenticated request")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to generate an itinerary right now. Please try again.",
+        )
 
 
 @router.get("/pois")
@@ -33,6 +44,31 @@ def get_pois():
     """List all POIs (for debugging or mobile sync)."""
     pois = get_all_pois()
     return [{"id": p.id, "name": p.name, "category": p.category, "latitude": p.latitude, "longitude": p.longitude} for p in pois]
+@router.get("/cities", tags=["cities"])
+def get_cities(
+    search: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    """
+    Get active cities.
+    Supports optional city-name search.
+    """
+
+    try:
+        cities = search_active_cities(
+            search=search,
+            limit=limit,
+        )
+
+        return cities
+
+    except Exception:
+        logger.exception("Failed to fetch cities from Supabase")
+
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to fetch cities right now. Please try again.",
+        )
 
 
 @router.get("/health")

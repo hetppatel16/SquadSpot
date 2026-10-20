@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { getJsonItem, setJsonItem, STORAGE_KEYS } from '../utils/storage';
 import { styles } from '../styles/PlannerStyles';
 import { validateBudget } from '../utils/Validations';
+import { searchCities } from '../services/api';
 import CustomSlider from '../components/CustomSlider';
 
 const parseDurationHours = (val) => {
@@ -32,7 +33,7 @@ const parseDurationHours = (val) => {
 };
 
 export default function PlannerScreen({ navigation, route }) {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
 
   // Prefer context user, fallback to route param or default
   const activeUser = user || route?.params?.user;
@@ -51,11 +52,18 @@ export default function PlannerScreen({ navigation, route }) {
   const [location, setLocation] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredCities, setFilteredCities] = useState([]);
+  // City search states
+  const [cityQuery, setCityQuery] = useState('');
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState('');
   const [budget, setBudget] = useState('2500');
   const [people, setPeople] = useState(5);
   const [selectedVibes, setSelectedVibes] = useState([]);
   const [duration, setDuration] = useState(4);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileNameDraft, setProfileNameDraft] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Restore last selected preferences on launch
   useEffect(() => {
@@ -71,6 +79,51 @@ export default function PlannerScreen({ navigation, route }) {
     }
     loadSavedDraft();
   }, []);
+  // Fetch cities dynamically whenever the user searches.
+  useEffect(() => {
+    const query = cityQuery.trim();
+
+    if (!showDropdown || !query) {
+      setFilteredCities([]);
+      setCitiesLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    // Wait briefly before calling the backend.
+    // This avoids making an API request for every keystroke.
+    const timer = setTimeout(async () => {
+      setCitiesLoading(true);
+      setCitiesError('');
+
+      try {
+        const results = await searchCities(query);
+
+        if (isActive) {
+          setFilteredCities(results);
+        }
+
+      } catch (error) {
+        if (isActive) {
+          setFilteredCities([]);
+          setCitiesError('Unable to load cities. Please try again.');
+        }
+
+      } finally {
+        if (isActive) {
+          setCitiesLoading(false);
+        }
+      }
+
+    }, 300);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timer);
+    };
+
+  }, [cityQuery, showDropdown]);
 
   // Persist draft whenever inputs change
   const persistDraft = async (updates) => {
@@ -85,32 +138,49 @@ export default function PlannerScreen({ navigation, route }) {
     await setJsonItem(STORAGE_KEYS.SAVED_PREFERENCES, draft);
   };
 
-  const cities = [
-    "Vadodara, Gujarat", "Ahmedabad, Gujarat", "Surat, Gujarat",
-    "Rajkot, Gujarat", "Mumbai, Maharashtra", "Pune, Maharashtra",
-    "Bangalore, Karnataka", "Delhi, India", "Jaipur, Rajasthan",
-    "Udaipur, Rajasthan", "Goa, India", "Indore, MP"
-  ];
 
+  // Update search input and save the user's draft.
   const handleSearch = (text) => {
     setLocation(text);
+    setCityQuery(text);
+    setCitiesError('');
+
+    setShowDropdown(text.trim().length > 0);
+
     persistDraft({ location: text });
-    if (text.length > 0) {
-      const filtered = cities.filter(city =>
-        city.toLowerCase().includes(text.toLowerCase())
-      );
-      setFilteredCities(filtered);
-      setShowDropdown(true);
-    } else {
-      setShowDropdown(false);
-    }
   };
 
+
+  // Select a city returned by the backend.
   const selectCity = (city) => {
-    setLocation(city);
-    persistDraft({ location: city });
+    const cityLabel = [
+      city.name,
+      city.state_region || city.country
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    setLocation(cityLabel);
+    setCityQuery('');
     setShowDropdown(false);
+    setFilteredCities([]);
+    setCitiesError('');
+
+    persistDraft({ location: cityLabel });
+
     Keyboard.dismiss();
+  };
+
+
+  // Clear the selected city.
+  const clearCity = () => {
+    setLocation('');
+    setCityQuery('');
+    setShowDropdown(false);
+    setFilteredCities([]);
+    setCitiesError('');
+
+    persistDraft({ location: '' });
   };
 
   const vibes = [
@@ -133,13 +203,37 @@ export default function PlannerScreen({ navigation, route }) {
     persistDraft({ selectedVibes: nextVibes });
   };
 
+  const handleSaveProfile = async () => {
+    const cleanName = profileNameDraft.trim();
+    if (!cleanName) {
+      const message = 'Please enter your name.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Name Required', message);
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+      await updateUser({ full_name: cleanName });
+      setIsEditingProfile(false);
+      const message = 'Your profile has been updated.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Profile Updated', message);
+    } catch (error) {
+      const message = error.message || 'Unable to update your profile.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Update Failed', message);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const handleLogout = async () => {
     setShowProfileModal(false);
     if (Platform.OS === 'web') {
       const confirm = window.confirm('Are you sure you want to log out?');
       if (confirm) {
         await logout();
-        navigation.replace('Login');
       }
     } else {
       Alert.alert(
@@ -152,7 +246,6 @@ export default function PlannerScreen({ navigation, route }) {
             style: 'destructive',
             onPress: async () => {
               await logout();
-              navigation.replace('Login');
             },
           },
         ]
@@ -205,7 +298,7 @@ export default function PlannerScreen({ navigation, route }) {
                 placeholderTextColor="rgba(255,255,255,0.3)"
               />
               {location.length > 0 && (
-                <TouchableOpacity onPress={() => { selectCity(''); }}>
+                <TouchableOpacity onPress={clearCity}>
                   <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.3)" />
                 </TouchableOpacity>
               )}
@@ -214,16 +307,51 @@ export default function PlannerScreen({ navigation, route }) {
             {/* Dropdown Menu */}
             {showDropdown && (
               <View style={styles.dropdownList}>
-                {filteredCities.map((city, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.dropdownItem}
-                    onPress={() => selectCity(city)}
-                  >
-                    <MaterialIcons name="location-city" size={16} color="rgba(255,255,255,0.6)" style={{ marginRight: 10 }} />
-                    <Text style={{ color: 'white', fontSize: 14 }}>{city}</Text>
-                  </TouchableOpacity>
-                ))}
+
+                {citiesLoading ? (
+
+                  <Text style={{ color: 'white', padding: 12 }}>
+                    Searching cities...
+                  </Text>
+
+                ) : citiesError ? (
+
+                  <Text style={{ color: '#ff7777', padding: 12 }}>
+                    {citiesError}
+                  </Text>
+
+                ) : filteredCities.length > 0 ? (
+
+                  filteredCities.map((city) => (
+                    <TouchableOpacity
+                      key={city.id}
+                      style={styles.dropdownItem}
+                      onPress={() => selectCity(city)}
+                    >
+                      <MaterialIcons
+                        name="location-city"
+                        size={16}
+                        color="rgba(255,255,255,0.6)"
+                        style={{ marginRight: 10 }}
+                      />
+
+                      <Text style={{ color: 'white', fontSize: 14 }}>
+                        {[city.name, city.state_region || city.country]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </Text>
+
+                    </TouchableOpacity>
+                  ))
+
+                ) : (
+
+                  <Text style={{ color: 'white', padding: 12 }}>
+                    No matching active cities found.
+                  </Text>
+
+                )}
+
               </View>
             )}
           </View>
@@ -304,7 +432,7 @@ export default function PlannerScreen({ navigation, route }) {
 
           {/* Vibe Selector */}
           <View style={styles.section}>
-            <Text style={styles.label}>What's the Vibe?</Text>
+            <Text style={styles.label}>What are you interested in?</Text>
             <View style={styles.vibesGrid}>
               {vibes.map((vibe) => {
                 const isSelected = selectedVibes.includes(vibe.id);
@@ -362,7 +490,7 @@ export default function PlannerScreen({ navigation, route }) {
                 people,
                 selectedVibes,
                 duration,
-                mood: selectedVibes.length > 0 ? 'adventurous' : 'relaxed',
+                mood: selectedVibes.includes(4) ? 'chill' : null,
               });
             }}
           >
@@ -383,7 +511,7 @@ export default function PlannerScreen({ navigation, route }) {
         <TouchableOpacity
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
           activeOpacity={1}
-          onPress={() => setShowProfileModal(false)}
+          onPress={() => { setShowProfileModal(false); setIsEditingProfile(false); }}
         >
           <View
             style={{
@@ -400,8 +528,45 @@ export default function PlannerScreen({ navigation, route }) {
             <View style={[styles.profileImagePlaceholder, { width: 64, height: 64, borderRadius: 32, marginBottom: 12 }]}>
               <Text style={[styles.profileInitials, { fontSize: 24 }]}>{initials}</Text>
             </View>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>{fullName}</Text>
-            {email ? <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 4 }}>{email}</Text> : null}
+            {isEditingProfile ? (
+              <View style={{ width: '100%', gap: 10 }}>
+                <Text style={{ color: '#94a3b8', fontSize: 13 }}>Full name</Text>
+                <TextInput
+                  value={profileNameDraft}
+                  onChangeText={setProfileNameDraft}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#64748b"
+                  autoCapitalize="words"
+                  maxLength={120}
+                  style={{ color: 'white', borderWidth: 1, borderColor: 'rgba(13,242,105,0.35)', borderRadius: 10, padding: 12, width: '100%' }}
+                />
+                <TouchableOpacity
+                  onPress={handleSaveProfile}
+                  disabled={isSavingProfile}
+                  style={{ width: '100%', backgroundColor: '#0df269', paddingVertical: 11, borderRadius: 10, alignItems: 'center', opacity: isSavingProfile ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: '#102217', fontWeight: 'bold' }}>{isSavingProfile ? 'Saving...' : 'Save Changes'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setIsEditingProfile(false)}
+                  disabled={isSavingProfile}
+                  style={{ width: '100%', paddingVertical: 8, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#94a3b8' }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>{fullName}</Text>
+                {email ? <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 4 }}>{email}</Text> : null}
+                <TouchableOpacity
+                  onPress={() => { setProfileNameDraft(fullName); setIsEditingProfile(true); }}
+                  style={{ marginTop: 12, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(13,242,105,0.4)' }}
+                >
+                  <Text style={{ color: '#0df269', fontWeight: '600' }}>Edit Profile</Text>
+                </TouchableOpacity>
+              </>
+            )}
 
             <View style={{ width: '100%', height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 18 }} />
 

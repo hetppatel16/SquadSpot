@@ -1,13 +1,35 @@
-from typing import Optional
+"""Authentication and user-profile endpoints backed by Supabase Auth."""
+import logging
+
+logger = logging.getLogger(__name__)
 import re
-from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
-from app.data_layer.repository import supabase
-from app.api.schemas import SignUpRequest, LoginRequest
+from datetime import datetime, timezone
+from typing import Literal, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, Field
+from supabase import create_client
+
+from app.api.schemas import LoginRequest, SignUpRequest
+from app.core.security import bearer_scheme, get_current_user
+from app.data_layer.repository import SUPABASE_ANON_KEY, SUPABASE_URL, supabase
 
 router = APIRouter()
 
-def validate_password_strength(password: str):
+
+def create_auth_client():
+    """Create an isolated Supabase Auth client for a single request."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service is not configured on the server.",
+        )
+    return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+
+def validate_password_strength(password: str) -> list[str]:
     errors = []
     if len(password) < 8:
         errors.append("At least 8 characters long")
@@ -21,268 +43,338 @@ def validate_password_strength(password: str):
         errors.append("One special character (@, #, $, %, etc.)")
     return errors
 
+
+def _password_error(password: str) -> Optional[str]:
+    errors = validate_password_strength(password)
+    if not errors:
+        return None
+    return "Password must include:\n" + "\n".join(f"• {item}" for item in errors)
+
+
+def sync_user_profile(user_id: str, email: str, full_name: str, avatar_url: Optional[str] = None) -> dict:
+    """Upsert a profile using the verified Supabase Auth user ID."""
+    clean_email = (email or "").strip().lower()
+    profile = {
+        "id": str(user_id),
+        "email": clean_email,
+        "full_name": full_name or (clean_email.split("@")[0] if clean_email else "User"),
+    }
+    if avatar_url:
+        profile["avatar_url"] = avatar_url
+
+    try:
+        existing = supabase.table("users").select(
+            "id,full_name,avatar_url,home_city_id"
+        ).eq("id", str(user_id)).limit(1).execute()
+        if existing.data:
+            stored_profile = existing.data[0]
+            # Keep profile edits made by the user; auth metadata is only a fallback.
+            profile["full_name"] = stored_profile.get("full_name") or profile["full_name"]
+            supabase.table("users").update({"email": clean_email}).eq("id", str(user_id)).execute()
+            profile.update({key: stored_profile.get(key) for key in ("avatar_url", "home_city_id")})
+        else:
+            # The migration's auth.users trigger normally creates this row.
+            supabase.table("users").upsert(profile).execute()
+    except Exception:
+        # Authentication remains authoritative; GET /auth/me can fall back to
+        # verified Auth metadata if profile storage is temporarily unavailable.
+        pass
+    return profile
+
+
+def _session_expiry(session) -> Optional[int]:
+    value = getattr(session, "expires_at", None)
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return int(value.timestamp())
+    if value is not None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    expires_in = getattr(session, "expires_in", None)
+    return int(datetime.now(timezone.utc).timestamp() + expires_in) if expires_in else None
+
+
+def _auth_result(response, profile: dict) -> dict:
+    """Convert a Supabase auth response into the frontend session shape."""
+    session = getattr(response, "session", None)
+    result = {
+        "status": "success",
+        "user": profile,
+        "confirmation_required": session is None,
+    }
+    if session is not None:
+        result.update({
+            "token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "token_type": getattr(session, "token_type", "bearer") or "bearer",
+            "expires_in": getattr(session, "expires_in", None),
+            "expires_at": _session_expiry(session),
+        })
+    return result
+
+
+def _profile_from_auth_user(auth_user, fallback_full_name: Optional[str] = None) -> dict:
+    email = getattr(auth_user, "email", None) or ""
+    metadata = getattr(auth_user, "user_metadata", None) or {}
+    full_name = (
+        metadata.get("full_name")
+        or metadata.get("name")
+        or (fallback_full_name.strip() if fallback_full_name else None)
+        or (email.split("@")[0] if email else "User")
+    )
+    avatar_url = metadata.get("avatar_url") or metadata.get("picture")
+    return sync_user_profile(auth_user.id, email, full_name, avatar_url)
+
+
 @router.post("/auth/signup")
 async def signup(payload: SignUpRequest):
-    # 1. Validate phone length and format
     phone_clean = payload.phone.strip()
     if len(phone_clean) != 10 or not phone_clean.isdigit():
         raise HTTPException(status_code=400, detail="Please enter a valid 10-digit phone number.")
 
-    # 2. Validate password strength
-    password_errors = validate_password_strength(payload.password)
-    if password_errors:
-        error_msg = "Password must include:\n" + "\n".join(f"• {e}" for e in password_errors)
-        raise HTTPException(status_code=400, detail=error_msg)
+    password_detail = _password_error(payload.password)
+    if password_detail:
+        raise HTTPException(status_code=400, detail=password_detail)
 
-    email_clean = payload.email.strip().lower()
+    clean_name = payload.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Full name is required.")
 
-    # 3. Call Supabase sign_up
+    auth_client = create_auth_client()
     try:
-        auth_response = supabase.auth.sign_up({
-            "email": email_clean,
+        response = auth_client.auth.sign_up({
+            "email": str(payload.email).strip().lower(),
             "password": payload.password,
-            "options": {
-                "data": {
-                    "full_name": payload.name,
-                    "phone": phone_clean
-                }
-            }
+            "options": {"data": {"full_name": clean_name, "phone": phone_clean}},
         })
-        if not auth_response or not auth_response.user:
-            raise HTTPException(status_code=400, detail="User registration failed.")
-
-        user_id = auth_response.user.id
-        email = auth_response.user.email
-
-        # Sync profile data to internal users table
-        profile_row = {
-            "id": user_id,
-            "full_name": payload.name,
-            "email": email
-        }
-        supabase.table("users").upsert(profile_row).execute()
-
-        return {
-            "status": "success",
-            "user": {
-                "id": user_id,
-                "email": email,
-                "full_name": payload.name
-            }
-        }
-    except Exception as error:
-        print("SignUp Exception:", str(error))
-        error_msg = str(error)
-        if "User already registered" in error_msg:
-            error_msg = "An account with this email already exists."
-        raise HTTPException(status_code=400, detail=error_msg)
-
-@router.post("/auth/login")
-async def login(payload: LoginRequest):
-    email_clean = payload.email.strip().lower()
-    try:
-        auth_response = supabase.auth.sign_in_with_password({
-            "email": email_clean,
-            "password": payload.password
-        })
-        if not auth_response or not auth_response.user:
-            raise HTTPException(status_code=400, detail="Invalid credentials.")
-
-        user_id = auth_response.user.id
-        email = auth_response.user.email
-
-        # Extract name from user metadata or fallback to email prefix
-        user_metadata = getattr(auth_response.user, "user_metadata", {}) or {}
-        full_name = user_metadata.get("full_name", email.split("@")[0] if email else "User")
-
-        # Sync user profile safely without duplicate key violations
-        profile_data = sync_user_profile(user_id, email, full_name)
-
-        return {
-            "status": "success",
-            "user": profile_data
-        }
-    except Exception as error:
-        print("Login Exception:", str(error))
-        error_msg = str(error)
-        if "Invalid login credentials" in error_msg:
-            error_msg = "Invalid email or password."
-        raise HTTPException(status_code=400, detail=error_msg)
-
-
-def sync_user_profile(user_id: str, email: str, full_name: str) -> dict:
-    """
-    Safely synchronizes user profile into the relational 'users' table,
-    handling existing email records gracefully to prevent duplicate key constraint violations.
-    """
-    email_clean = email.strip().lower() if email else ""
-    try:
-        existing = supabase.table("users").select("*").eq("email", email_clean).execute()
-        if existing.data and len(existing.data) > 0:
-            target_id = existing.data[0]["id"]
-            final_name = full_name or existing.data[0].get("full_name") or (email_clean.split("@")[0] if email_clean else "User")
-            try:
-                supabase.table("users").update({"full_name": final_name}).eq("id", target_id).execute()
-            except Exception as update_err:
-                print("Notice updating existing user profile:", update_err)
-            return {"id": str(target_id), "email": email_clean, "full_name": final_name}
-        else:
-            profile = {"id": str(user_id), "email": email_clean, "full_name": full_name}
-            supabase.table("users").insert(profile).execute()
-            return profile
-    except Exception as e:
-        print("User profile sync notice:", e)
-        return {"id": str(user_id), "email": email_clean, "full_name": full_name}
-
-
-# Schema for checking incoming cross-platform payload shapes
-class OAuthLoginRequest(BaseModel):
-    provider: str  # "google" or "apple"
-    id_token: Optional[str] = None
-    access_token: Optional[str] = None
-
-@router.post("/auth/oauth")
-async def oauth_login(payload: OAuthLoginRequest):
-    """
-    Receives secure validation tokens from frontend native runtime environments,
-    validates the session against Supabase Auth or provider userinfo endpoints,
-    and upserts user data rows into the database safely.
-    """
-    try:
-        # 1. Development / Offline bypass mode support
-        if payload.id_token and (payload.id_token.startswith("mock_") or payload.id_token.startswith("dev_")):
-            email = payload.access_token or "dhairyasoni997@gmail.com"
-            full_name = email.split("@")[0].replace(".", " ").title()
-            import uuid
-            user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
-            profile_data = sync_user_profile(user_id, email, full_name)
-            return {
-                "status": "success",
-                "user": profile_data
-            }
-
-        # 2. Try Supabase sign_in_with_id_token if id_token is provided
-        if payload.id_token:
-            try:
-                auth_response = supabase.auth.sign_in_with_id_token({
-                    "provider": payload.provider,
-                    "id_token": payload.id_token,
-                    "access_token": payload.access_token
-                })
-                if auth_response and auth_response.user:
-                    user_id = auth_response.user.id
-                    email = auth_response.user.email
-                    user_metadata = getattr(auth_response.user, "user_metadata", {}) or {}
-                    full_name = user_metadata.get("full_name", email.split("@")[0] if email else "Google User")
-                    profile_data = sync_user_profile(user_id, email, full_name)
-                    return {
-                        "status": "success",
-                        "user": profile_data
-                    }
-            except Exception as e:
-                print("Supabase ID token verification notice:", e)
-
-        # 3. Fallback: Verify with Google Userinfo API via access_token
-        if payload.provider == "google" and payload.access_token:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                google_res = await client.get(
-                    "https://www.googleapis.com/oauth2/v3/userinfo",
-                    headers={"Authorization": f"Bearer {payload.access_token}"}
-                )
-            if google_res.status_code == 200:
-                google_user = google_res.json()
-                email = google_user.get("email")
-                full_name = google_user.get("name") or (email.split("@")[0] if email else "Google User")
-                import uuid
-                user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, email or google_user.get("sub", "")))
-                profile_data = sync_user_profile(user_id, email, full_name)
-                return {
-                    "status": "success",
-                    "user": profile_data
-                }
-            else:
-                raise HTTPException(status_code=400, detail="Failed to fetch user profile from Google.")
-
-        raise HTTPException(status_code=400, detail="Authentication signature rejected. Please try again.")
-
+        auth_user = getattr(response, "user", None)
+        if auth_user is None:
+            raise HTTPException(status_code=400, detail="Unable to create the account. Please try again.")
+        profile = _profile_from_auth_user(auth_user)
+        return _auth_result(response, profile)
     except HTTPException:
         raise
     except Exception as error:
-        print("OAuth Security Interceptor Exception:", str(error))
-        raise HTTPException(status_code=400, detail=f"Handshake failed: {str(error)}")
+        logger.error(
+        "Supabase signup failed: %s: %s",
+        type(error).__name__,
+        error
+        )
+        message = str(error).lower()
+        if "already registered" in message:
+            raise HTTPException(status_code=409, detail="An account with this email already exists.") from error
+        raise HTTPException(status_code=400, detail="Unable to create the account. Please check your details and try again.") from error
 
 
-# In-memory store for active password reset OTP codes (for MVP development)
-ACTIVE_OTPS = {}
+@router.post("/auth/login")
+async def login(payload: LoginRequest):
+    auth_client = create_auth_client()
+    try:
+        response = auth_client.auth.sign_in_with_password({
+            "email": str(payload.email).strip().lower(),
+            "password": payload.password,
+        })
+        auth_user = getattr(response, "user", None)
+        if auth_user is None or getattr(response, "session", None) is None:
+            raise HTTPException(status_code=401, detail="Invalid email or password, or email not yet confirmed.")
+        profile = _profile_from_auth_user(auth_user)
+        return _auth_result(response, profile)
+    except HTTPException:
+        raise
+    except Exception as error:
+        message = str(error).lower()
+        if "invalid login credentials" in message:
+            detail = "Invalid email or password."
+        elif "email not confirmed" in message:
+            detail = "Please confirm your email before logging in."
+        else:
+            detail = "Unable to sign in right now. Please try again."
+        raise HTTPException(status_code=401 if "invalid" in message or "not confirmed" in message else 503, detail=detail) from error
+
+
+class OAuthLoginRequest(BaseModel):
+    provider: Literal["google", "apple"]
+    id_token: str = Field(min_length=20)
+    access_token: Optional[str] = None
+    nonce: Optional[str] = None
+    full_name: Optional[str] = Field(default=None, max_length=120)
+
+
+@router.post("/auth/oauth")
+async def oauth_login(payload: OAuthLoginRequest):
+    """Exchange a real provider ID token for a Supabase session."""
+    auth_client = create_auth_client()
+    credentials = {"provider": payload.provider, "token": payload.id_token}
+    if payload.access_token:
+        credentials["access_token"] = payload.access_token
+    if payload.nonce:
+        credentials["nonce"] = payload.nonce
+
+    try:
+        response = auth_client.auth.sign_in_with_id_token(credentials)
+        auth_user = getattr(response, "user", None)
+        if auth_user is None or getattr(response, "session", None) is None:
+            raise HTTPException(status_code=401, detail="The identity provider did not return a valid session.")
+        profile = _profile_from_auth_user(auth_user, payload.full_name)
+        return _auth_result(response, profile)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=401, detail="The Google or Apple identity token could not be verified.") from error
+
+
+class RefreshSessionRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
+@router.post("/auth/refresh")
+async def refresh_session(payload: RefreshSessionRequest):
+    """Exchange a valid refresh token for a new Supabase session."""
+    auth_client = create_auth_client()
+    try:
+        response = auth_client.auth.refresh_session(payload.refresh_token)
+        auth_user = getattr(response, "user", None)
+        if auth_user is None or getattr(response, "session", None) is None:
+            raise ValueError("Refresh did not return a session")
+        profile = _profile_from_auth_user(auth_user)
+        return _auth_result(response, profile)
+    except Exception as error:
+        raise HTTPException(status_code=401, detail="Your session has expired. Please sign in again.") from error
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
+@router.post("/auth/logout")
+async def logout(
+    payload: LogoutRequest,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+):
+    """Revoke the current Supabase refresh-token session when possible."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Authentication required to sign out.")
+
+    auth_client = create_auth_client()
+    try:
+        # set_session verifies the access token and can refresh it when expired.
+        auth_client.auth.set_session(credentials.credentials, payload.refresh_token)
+        auth_client.auth.sign_out({"scope": "local"})
+        return {"status": "success"}
+    except Exception as error:
+        # The frontend still clears local credentials if remote revocation fails.
+        raise HTTPException(status_code=400, detail="The server could not revoke this session. Local sign-out is still available.") from error
+
+
+@router.get("/auth/me")
+async def get_my_profile(current_user=Depends(get_current_user)):
+    user_id = str(current_user.id)
+    try:
+        response = supabase.table("users").select(
+            "id,email,full_name,avatar_url,home_city_id"
+        ).eq("id", user_id).limit(1).execute()
+        if response.data:
+            return response.data[0]
+    except Exception:
+        # A verified Auth user can still use the app if profile storage is down.
+        pass
+
+    metadata = getattr(current_user, "user_metadata", None) or {}
+    email = getattr(current_user, "email", None)
+    return {
+        "id": user_id,
+        "email": email,
+        "full_name": metadata.get("full_name") or (email.split("@")[0] if email else "User"),
+        "avatar_url": metadata.get("avatar_url"),
+        "home_city_id": None,
+    }
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    avatar_url: Optional[str] = Field(default=None, max_length=2048)
+    home_city_id: Optional[UUID] = None
+
+
+@router.patch("/auth/me")
+async def update_my_profile(payload: ProfileUpdateRequest, current_user=Depends(get_current_user)):
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="Provide at least one profile field to update.")
+
+    if "full_name" in updates:
+        updates["full_name"] = updates["full_name"].strip()
+        if not updates["full_name"]:
+            raise HTTPException(status_code=400, detail="Full name cannot be empty.")
+    if "home_city_id" in updates:
+        updates["home_city_id"] = str(updates["home_city_id"])
+
+    try:
+        supabase.table("users").update(updates).eq("id", str(current_user.id)).execute()
+        profile_response = supabase.table("users").select(
+            "id,email,full_name,avatar_url,home_city_id"
+        ).eq("id", str(current_user.id)).limit(1).execute()
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Profile service is temporarily unavailable.") from error
+
+    if profile_response.data:
+        return profile_response.data[0]
+    raise HTTPException(status_code=404, detail="User profile not found.")
+
 
 class ResetPasswordPayload(BaseModel):
-    email: str
+    email: EmailStr
+
 
 class VerifyOtpPayload(BaseModel):
-    email: str
-    token: str
-    new_password: str
+    email: EmailStr
+    token: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=128)
+
 
 @router.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordPayload):
-    email_clean = payload.email.strip().lower()
-    
-    # 1. Verify if user is registered in users table
-    res = supabase.table("users").select("id").eq("email", email_clean).execute()
-    if not res.data:
-        raise HTTPException(status_code=400, detail="No account registered with this email address.")
+    """Ask Supabase Auth to send its configured recovery email/OTP."""
+    auth_client = create_auth_client()
+    try:
+        auth_client.auth.reset_password_for_email(str(payload.email).strip().lower())
+    except Exception as error:
+        error_message = str(error).lower()
+        # Keep the response generic so callers cannot use this endpoint to
+        # discover whether an email address is registered.
+        if "rate limit" in error_message or "too many" in error_message:
+            raise HTTPException(
+            status_code=429,
+            detail="Too many password reset requests. Please wait before trying again."
+        )
+        print("PASSWORD RESET ERROR:", repr(error))
+        raise HTTPException(status_code=503, detail="Password recovery is temporarily unavailable. Please try again later.") from error
 
-    # 2. Generate random 4-digit OTP code
-    import random
-    otp = f"{random.randint(1000, 9999)}"
-    ACTIVE_OTPS[email_clean] = otp
-
-    # Log to terminal console so that developers can easily copy-paste the code
-    print(f"\n============================================\n[RESET PASSWORD OTP] Generated code for {email_clean}: {otp}\n============================================\n")
-
-    return {"status": "success", "detail": "OTP code generated successfully."}
+    return {
+        "status": "success",
+        "detail": "If an account exists for that email, a password recovery code has been sent.",
+    }
 
 
 @router.post("/auth/verify-otp")
 async def verify_otp(payload: VerifyOtpPayload):
-    email_clean = payload.email.strip().lower()
-    otp_clean = payload.token.strip()
+    password_detail = _password_error(payload.new_password)
+    if password_detail:
+        raise HTTPException(status_code=400, detail=password_detail)
 
-    # 1. Validate OTP presence & correctness
-    if email_clean not in ACTIVE_OTPS or ACTIVE_OTPS[email_clean] != otp_clean:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP token.")
-
-    # 2. Validate password strength
-    password_errors = validate_password_strength(payload.new_password)
-    if password_errors:
-        error_msg = "Password must include:\n" + "\n".join(f"• {e}" for e in password_errors)
-        raise HTTPException(status_code=400, detail=error_msg)
-
-    # 3. Retrieve user id mapping from email
-    res = supabase.table("users").select("id").eq("email", email_clean).execute()
-    if not res.data:
-        raise HTTPException(status_code=400, detail="User profile mismatch. User not found.")
-    
-    user_id = res.data[0]["id"]
-
-    # 4. Trigger password reset via Supabase Admin SDK attributes manager
+    auth_client = create_auth_client()
     try:
-        import os
-        SUPABASE_URL = os.getenv("SUPABASE_URL")
-        SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        from supabase import create_client
-        supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-        supabase_admin.auth.admin.update_user_by_id(
-            user_id,
-            attributes={"password": payload.new_password}
-        )
-
-        # Clear OTP from active memory store
-        del ACTIVE_OTPS[email_clean]
-
+        # Supabase verifies expiry and one-time use. Its configured email
+        # template must include {{ .Token }} to deliver a code for this screen.
+        auth_client.auth.verify_otp({
+            "email": str(payload.email).strip().lower(),
+            "token": payload.token,
+            "type": "recovery",
+        })
+        auth_client.auth.update_user({"password": payload.new_password})
         return {"status": "success", "detail": "Password updated successfully."}
     except Exception as error:
-        print("Admin Password Update Exception:", str(error))
-        raise HTTPException(status_code=400, detail=f"Failed to reset password: {str(error)}")
+        raise HTTPException(status_code=400, detail="The recovery code is invalid or expired, or the password could not be updated.") from error

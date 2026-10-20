@@ -38,6 +38,7 @@ class ItineraryRequest(BaseModel):
 
 class ItineraryResponse(BaseModel):
     title: Optional[str] = Field(None, description="Itinerary title")
+    message: Optional[str] = Field(None, description="Explanation when no matching places are available")
     ordered_places: List[dict]
     timeline: List[dict]
     cost_breakdown: dict
