@@ -1,6 +1,6 @@
 ﻿# Time window, budget, and total-time checks. Used by normalizer and scoring_engine.
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 # A single place may cost up to this fraction over the per-person budget.
 # Such places are still offered but flagged as over budget in the response.
@@ -49,16 +49,3 @@ def _to_minutes(hhmm: str) -> int:
     return int(parts[0]) * 60 + int(parts[1]) if len(parts) == 2 else 0
 
 
-def check_budget(total_cost: float, budget: float) -> bool:
-    """True if total_cost <= budget."""
-    return total_cost <= budget
-
-
-def check_total_time(total_minutes: float, available_minutes: float) -> bool:
-    """True if total_minutes <= available_minutes."""
-    return total_minutes <= available_minutes
-
-
-def total_route_cost(poi_costs: List[float]) -> float:
-    """Sum of cost_estimate for each POI in the route."""
-    return sum(poi_costs)

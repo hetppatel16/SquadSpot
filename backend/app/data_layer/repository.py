@@ -1,25 +1,15 @@
 # POI repository: read POIs from Supabase.
 # Used by normalizer to fetch the full candidate set before filtering.
+import logging
 import os
-import json
 from dotenv import load_dotenv
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 # Load Environment Variables from your active backend/.env file
 load_dotenv()
 
-# SUPABASE_URL = os.getenv("SUPABASE_URL")
-# SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-# SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-# SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
-
-# if not SUPABASE_URL or not SUPABASE_KEY:
-#     raise ValueError("Missing Supabase credentials in backend environment configurations.")
-
-# # The shared data client is used for server-side POI/profile operations.
-# # Authentication requests use a separate anon-key client per request so one
-# # user's in-memory auth session cannot leak into another request.
-# supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -37,7 +27,7 @@ TABLE_NAME = "places"  # Matches the target table populated by your seeder scrip
 
 class SupabasePOI:
     """
-    A lightweight wrapper class that mimics the old SQLAlchemy POI model structure.
+    A lightweight wrapper around one Supabase `places` row (originally shaped like the old SQLAlchemy POI model).
     This ensures that properties like poi.name, poi.latitude, and poi.mood_tags
     remain fully functional across your data normalizer and GA core engine.
     """
@@ -104,25 +94,15 @@ def get_all_pois(city_id: str | None = None):
         response = query.execute()
         return [SupabasePOI(row) for row in (response.data or [])]
     except Exception as error:
-        print(f"Error fetching POIs from Supabase: {error}")
+        logger.exception("Error fetching POIs from Supabase")
         raise RuntimeError("Could not load places from the database.") from error
 
 
-def get_poi_by_id(poi_id: str):
-    """
-    Return a single POI by id, or None if not found.
-    Useful for lookups when we have an id from an itinerary (e.g. after GA).
-    """
-    try:
-        response = supabase.table(TABLE_NAME).select(
-            "*, place_categories(categories(name)), place_vibes(vibes(name))"
-        ).eq("id", poi_id).eq("is_active", True).execute()
-        if response.data and len(response.data) > 0:
-            return SupabasePOI(response.data[0])
-        return None
-    except Exception as error:
-        print(f"Error fetching POI by ID ({poi_id}) from Supabase: {error}")
-        return None
+def _escape_like(text: str) -> str:
+    """Make %, _ and \\ in user input match literally in an ILIKE pattern."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def search_active_cities(search: str = None, limit: int = 20):
     """
     Fetch active cities from Supabase.
@@ -141,7 +121,9 @@ def search_active_cities(search: str = None, limit: int = 20):
 
     # Apply city-name search if the user entered something.
     if search and search.strip():
-        query = query.ilike("name", f"%{search.strip()}%")
+        # PostgREST also treats * as a wildcard, so it is dropped from the search text.
+        term = _escape_like(search.strip().replace("*", ""))
+        query = query.ilike("name", f"%{term}%")
 
     response = query.execute()
 
