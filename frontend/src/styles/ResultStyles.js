@@ -2,8 +2,8 @@ import { StyleSheet , Dimensions } from "react-native";
 
 const { width } = Dimensions.get('window');
 
-export const CARD_WIDTH = width * 0.85; 
-export const SPACING = (width - CARD_WIDTH) / 2;
+export const CARD_WIDTH = Math.min(width * 0.85, 460); 
+export const SPACING = Math.max((width - CARD_WIDTH) / 2, 20);
 
 export const styles = StyleSheet.create({
   cardContainer: {
@@ -22,6 +22,7 @@ export const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 24, paddingTop: 70, paddingBottom: 10,
+    width: '100%', maxWidth: 500, alignSelf: 'center',
   },
   backButton: {
     width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center',

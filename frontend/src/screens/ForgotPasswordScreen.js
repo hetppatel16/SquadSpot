@@ -8,8 +8,6 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  Keyboard,
   SafeAreaView,
   Alert,
   ActivityIndicator
@@ -37,9 +35,9 @@ export default function ForgotPasswordScreen({ navigation }) {
     try {
       await requestPasswordReset(emailClean);
       if (Platform.OS === 'web') {
-        window.alert('OTP code generated successfully. Please check your backend console logs!');
+        window.alert('If an account exists for this email, a password recovery code has been sent.');
       } else {
-        Alert.alert('OTP Generated', 'OTP code generated successfully. Please check your backend console logs!');
+        Alert.alert('Check Your Email', 'If an account exists for this email, a password recovery code has been sent.');
       }
       navigation.navigate('OtpScreen', { email: emailClean });
     } catch (error) {
@@ -70,7 +68,7 @@ export default function ForgotPasswordScreen({ navigation }) {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboardView}
         >
-          <Pressable onPress={Keyboard.dismiss} style={styles.keyboardView}>
+          <View style={styles.keyboardView}>
             <View style={styles.innerContainer}>
 
               {/* Top Navigation */}
@@ -88,7 +86,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                 <View style={styles.header}>
                   <Text style={styles.title}>Forgot Password?</Text>
                   <Text style={styles.subtitle}>
-                    Enter your email address to receive a password reset link.
+                    Enter your email address to receive a password recovery code.
                   </Text>
                 </View>
 
@@ -156,7 +154,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               </View>
 
             </View>
-          </Pressable>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>

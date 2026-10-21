@@ -21,3 +21,15 @@ export const validatePassword = (password) => {
   const strongRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
   return strongRegex.test(password);
 };
+/**
+ * Validates whether the entered budget is a positive number.
+ */
+export const validateBudget = (budget) => {
+  if (budget === null || budget === undefined || String(budget).trim() === '') {
+    return false;
+  }
+
+  const amount = Number(budget);
+
+  return Number.isFinite(amount) && amount > 0;
+};

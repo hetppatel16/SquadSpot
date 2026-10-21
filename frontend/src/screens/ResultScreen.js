@@ -9,7 +9,9 @@ import {
   Dimensions,
   StatusBar,
   SafeAreaView,
-  Linking
+  Alert,
+  Linking,
+  Platform
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -31,48 +33,126 @@ export default function ResultScreen({ navigation, route }) {
     const rawStops = plan.stops || plan.timeline || plan.items || [];
     
     // Look across all common keys to find your cost number
-    const cost = plan.totalEst || plan.total_cost || plan.cost_breakdown?.total || "0";
+    const cost = plan.totalEst ?? plan.total_cost ?? plan.cost_breakdown?.total ?? "0";
 
     return {
       id: plan.id || index + 1,
       title: plan.title || `Route Option ${index + 1}`,
       totalEst: cost,
+      costDisplay: plan.costDisplay || (plan.unknownCostCount > 0 ? (Number(cost) > 0 ? `₹${cost}+` : "Not listed") : `₹${cost}`),
+      unknownCostCount: Number(plan.unknownCostCount || plan.cost_breakdown?.unknown_count || 0),
       image: plan.image || rawStops[0]?.image || rawStops[0]?.image_url || 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
       stops: rawStops.map((stop, i) => ({
         icon: stop.icon || (stop.category?.toLowerCase().includes('food') || stop.type?.toLowerCase().includes('food') ? 'restaurant' : 'park'),
         title: stop.title || stop.name || `Stop ${i + 1}`,
         type: stop.type || stop.category || "Activity",
         time: stop.time || "Flexible",
-        price: stop.price !== undefined ? (typeof stop.price === 'number' ? `~\u20b9${stop.price}` : stop.price) : "Free",
+        price: stop.price !== undefined && stop.price !== null
+          ? (typeof stop.price === 'number'
+              ? (stop.price === 0 ? "Free" : `~₹${stop.price}`)
+              : stop.price)
+          : "Cost not listed",
         desc: stop.desc || stop.description || "No description details provided.",
-        image: stop.image || stop.image_url || null // Retain image reference properties through cleanup mapper layers
+        image: stop.image || stop.image_url || null,
+        latitude: stop.latitude !== undefined && stop.latitude !== null ? Number(stop.latitude) : null,
+        longitude: stop.longitude !== undefined && stop.longitude !== null ? Number(stop.longitude) : null,
+        address: stop.address || null
       }))
     };
   });
 
-  // 3. Fallback to sample demo cards if the dataset is completely missing items
-  const fallbackPlan = [
-    {
-      id: 1,
-      title: 'The Chill Evening (Backup)',
-      totalEst: '450',
-      image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop',
-      stops: [
-        { icon: 'restaurant', title: 'Raju Omlet', type: 'Dinner', time: '6:30 PM', price: '~\u20b9150', desc: 'Famous local spot for egg varieties. Try the crushed egg fry.', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=600' },
-        { icon: 'park', title: 'Sayaji Baug', type: 'Evening Walk', time: '8:00 PM', price: 'Free', desc: 'Relaxing stroll through the lush gardens and visit the museum.', image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?q=80&w=600' }
-      ]
-    }
-  ];
+  // Never replace a missing/empty itinerary with unrelated demo attractions.
+  const plans = cleanedPlans.filter(plan => plan.stops.length > 0);
 
-  // Use cleaned database plans if they have content, otherwise load our fallback display layout!
-  const hasValidStops = cleanedPlans.length > 0 && cleanedPlans[0].stops.length > 0;
-  const plans = hasValidStops ? cleanedPlans : fallbackPlan;
+  const handleNavigate = async (plan) => {
+    const stops = plan.stops;
+    const hasValidCoordinates = stops.every((stop) => (
+      Number.isFinite(stop.latitude) &&
+      Number.isFinite(stop.longitude) &&
+      stop.latitude >= -90 && stop.latitude <= 90 &&
+      stop.longitude >= -180 && stop.longitude <= 180 &&
+      !(stop.latitude === 0 && stop.longitude === 0)
+    ));
+
+    if (stops.length === 0 || !hasValidCoordinates) {
+      const message = 'This itinerary is missing exact map coordinates. Please generate it again.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Route Unavailable', message);
+      return;
+    }
+
+    let url;
+    if (stops.length === 1) {
+      const onlyStop = stops[0];
+      const coordinates = encodeURIComponent(`${onlyStop.latitude},${onlyStop.longitude}`);
+      url = `https://www.google.com/maps/search/?api=1&query=${coordinates}`;
+    } else {
+      // Google Maps supports up to 3 intermediate stops on mobile URLs and
+      // up to 9 on other platforms. Keep the route within those documented limits.
+      const maxWaypoints = Platform.OS === 'web' ? 9 : 3;
+      const maxStopsInOneRoute = maxWaypoints + 2;
+      const allWaypoints = stops.slice(1, -1);
+      const routeStops = stops.slice(0, maxStopsInOneRoute);
+      const waypoints = routeStops.slice(1, -1);
+      const firstStop = routeStops[0];
+      const lastStop = routeStops[routeStops.length - 1];
+      const waypointParameter = waypoints.length
+        ? `&waypoints=${encodeURIComponent(waypoints.map(stop => `${stop.latitude},${stop.longitude}`).join('|'))}`
+        : '';
+
+      const origin = encodeURIComponent(`${firstStop.latitude},${firstStop.longitude}`);
+      const destination = encodeURIComponent(`${lastStop.latitude},${lastStop.longitude}`);
+      url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypointParameter}&travelmode=driving`;
+
+      if (allWaypoints.length > maxWaypoints) {
+        const message = `Google Maps can include only ${maxWaypoints} intermediate stops on this device. Open the first ${maxStopsInOneRoute} stops as one route?`;
+        if (Platform.OS === 'web') {
+          if (!window.confirm(message)) return;
+        } else {
+          Alert.alert('Route Stop Limit', message, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Route', onPress: () => Linking.openURL(url).catch(() => Alert.alert('Navigation Error', 'Unable to open Google Maps on this device.')) }
+          ]);
+          return;
+        }
+      }
+    }
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      const message = 'Unable to open Google Maps on this device.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Navigation Error', message);
+    }
+  };
 
   const handleScroll = (event) => {
     const slideSize = CARD_WIDTH + 20; 
     const index = event.nativeEvent.contentOffset.x / slideSize;
     setActiveSlide(Math.round(index));
   };
+
+  if (plans.length === 0) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <SafeAreaView style={styles.safeArea}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <MaterialIcons name="arrow-back" size={28} color="white" />
+          </TouchableOpacity>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+            <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' }}>
+              {rawParams.emptyTitle || 'No Itinerary Available'}
+            </Text>
+            <Text style={{ color: '#b8c5bd', textAlign: 'center', marginTop: 12 }}>
+              {rawParams.emptyMessage || 'No verified places were returned for these preferences. Go back and try another selection.'}
+            </Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -116,9 +196,10 @@ export default function ResultScreen({ navigation, route }) {
                   <View style={styles.cardHeaderContent}>
                     <Text style={styles.planTitle}>{plan.title}</Text>
                     <View style={styles.priceTag}>
-                      <Text style={styles.priceLabel}>Total Est:</Text>
-                      <Text style={styles.priceValue}>{'\u20b9'}{plan.totalEst}/person</Text>
+                      <Text style={styles.priceLabel}>Entry fees est.:</Text>
+                      <Text style={styles.priceValue}>{plan.costDisplay}/person</Text>
                     </View>
+                    <Text style={{ color: "#B6C7BB", fontSize: 10, marginTop: 4 }}>Per-person attraction entry fees only; transport, meals and optional activities are extra.</Text>
                   </View>
                 </View>
 
@@ -176,12 +257,7 @@ export default function ResultScreen({ navigation, route }) {
                 <View style={styles.cardFooter}>
                   <TouchableOpacity
                     style={styles.navigateButton}
-                    onPress={() => {
-                      if (plan.stops.length > 0) {
-                        const firstStop = plan.stops[0].title;
-                        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(firstStop)}`);
-                      }
-                    }}
+                    onPress={() => handleNavigate(plan)}
                   >
                     <Text style={styles.navigateText}>Navigate This Route</Text>
                     <View style={styles.navIconCircle}>

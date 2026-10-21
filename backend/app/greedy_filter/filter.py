@@ -33,7 +33,11 @@ def filter_top_k(normalized_pois: List[Dict[str, Any]], user_context: Dict[str, 
     for pref in preferences:
         cat_count = 0
         for s, poi in scored:
-            if poi.get("category", "").lower() == pref:
+            poi_categories = {
+                str(category).lower()
+                for category in poi.get("categories", [poi.get("category", "")])
+            }
+            if pref in poi_categories:
                 if poi["id"] not in selected_ids:
                     selected_pois.append(poi)
                     selected_ids.add(poi["id"])

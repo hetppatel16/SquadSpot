@@ -83,9 +83,12 @@ def evaluate(
             continue
             
         # Category coverage tracking
-        poi_cat = poi.get("category", "").lower()
-        if poi_cat in preferences:
-            covered_categories.add(poi_cat)
+        poi_categories = {
+            str(category).lower()
+            for category in poi.get("categories", [poi.get("category", "")])
+            if category
+        }
+        covered_categories.update(poi_categories.intersection(preferences))
             
         # Travel to this POI
         travel_m = _travel_minutes(prev_lat, prev_lon, poi["latitude"], poi["longitude"])
@@ -118,11 +121,16 @@ def evaluate(
         else:
             mood_sum += 0.3  # small default
 
-        cost = poi.get("cost_estimate", 0)
-        total_cost += cost
-        # Assume 60 min per visit for simplicity
-        total_minutes += 60
-        arrival_minutes = (arrival_minutes + 60) % (24 * 60)
+        # Unknown admission costs are excluded from the numeric subtotal;
+        # they remain flagged as unknown in the returned cost breakdown.
+        cost = poi.get("cost_estimate")
+        total_cost += float(cost) if cost is not None else 0.0
+
+        # Use each place's stored visit duration instead of assuming every
+        # attraction takes exactly one hour.
+        visit_minutes = int(poi.get("avg_visit_duration_minutes") or 60)
+        total_minutes += visit_minutes
+        arrival_minutes = (arrival_minutes + visit_minutes) % (24 * 60)
         prev_lat, prev_lon = poi["latitude"], poi["longitude"]
 
     n = len(route)
@@ -134,7 +142,12 @@ def evaluate(
     rating_score = rating_sum / n
     
     # Calculate coverage of feasible preferences in the candidates pool to avoid penalizing if the database lacks a category
-    available_categories = {poi.get("category", "").lower() for poi in poi_lookup.values() if poi.get("category")}
+    available_categories = {
+        str(category).lower()
+        for poi in poi_lookup.values()
+        for category in poi.get("categories", [poi.get("category", "")])
+        if category
+    }
     feasible_preferences = set(preferences).intersection(available_categories)
     
     if feasible_preferences:

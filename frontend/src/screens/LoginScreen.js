@@ -17,13 +17,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'; 
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 import { loginUser, oauthLogin } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { styles } from "../styles/LoginStyles";
 import { GOOGLE_AUTH_CONFIG } from '../constants/authConfig';
+import ResponsiveContainer from '../components/ResponsiveContainer';
 
 // Completes the authentication routing redirect loop properly back onto mobile screens
 WebBrowser.maybeCompleteAuthSession();
@@ -49,15 +52,26 @@ export default function LoginScreen({ navigation }) {
       .catch(() => setIsAppleAvailable(false));
   }, []);
 
-  // Configure Client IDs from centralized authConfig
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  // Use the app's registered scheme so the provider can return to the app.
+  const googleRedirectUri = AuthSession.makeRedirectUri({
+    scheme: 'squadspot',
+    path: 'oauthredirect',
+  });
+  const googleClientId = Platform.select({
+    android: GOOGLE_AUTH_CONFIG.androidClientId,
+    ios: GOOGLE_AUTH_CONFIG.iosClientId,
+    default: GOOGLE_AUTH_CONFIG.webClientId,
+  });
+
+  // This hook requests an ID token (directly on web and through the native
+  // authorization-code exchange on installed iOS/Android builds).
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId,
     iosClientId: GOOGLE_AUTH_CONFIG.iosClientId,
     webClientId: GOOGLE_AUTH_CONFIG.webClientId,
+    redirectUri: googleRedirectUri,
     scopes: ['openid', 'profile', 'email'],
-    extraParams: {
-      prompt: 'select_account',
-    },
+    selectAccount: true,
   });
 
   // Listen for active Google session authorization success responses
@@ -74,14 +88,20 @@ export default function LoginScreen({ navigation }) {
   }, [response]);
 
   // Handshake function communicating provider identity keys down to FastAPI
-  const handleBackendOAuth = async (provider, idToken, accessToken) => {
+  const handleBackendOAuth = async (provider, idToken, accessToken, nonce = null, fullName = null) => {
+    if (!idToken) {
+      const message = `${provider} did not return an identity token. Please try again.`;
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Authentication Failed', message);
+      return;
+    }
     setIsOAuthLoading(true);
     try {
-      const data = await oauthLogin(provider, idToken, accessToken);
+      const data = await oauthLogin(provider, idToken, accessToken, nonce, fullName);
       if (login) {
-        await login(data.user, data.token || null);
+        await login(data.user, data.token, data.refresh_token, data.expires_at);
       }
-      navigation.replace('Planner');
+      // Auth state change switches AppNavigator to the private routes.
     } catch (error) {
       console.error(`${provider} OAuth Handshake Error:`, error);
       const msg = error.message || `${provider} authentication failed.`;
@@ -96,14 +116,19 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleGooglePress = () => {
-    if (GOOGLE_AUTH_CONFIG.webClientId.includes('YOUR_WEB_CLIENT_ID')) {
-      const targetEmail = email.trim() && validateEmailInline(email.trim()) 
-        ? email.trim() 
-        : GOOGLE_AUTH_CONFIG.developerEmail;
-      handleBackendOAuth('google', 'mock_google_token', targetEmail);
-    } else {
-      promptAsync();
+    if (!googleClientId || googleClientId.includes('YOUR_')) {
+      const message = 'Google Sign-In is not configured for this platform. Add its OAuth client ID first.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Google Sign-In Unavailable', message);
+      return;
     }
+    if (!request) {
+      const message = 'Google Sign-In is still initializing. Please try again in a moment.';
+      if (Platform.OS === 'web') window.alert(message);
+      else Alert.alert('Please Wait', message);
+      return;
+    }
+    promptAsync();
   };
 
   const handleLogin = async () => {
@@ -122,9 +147,9 @@ export default function LoginScreen({ navigation }) {
     try {
       const response = await loginUser({ email: trimmedEmail, password });
       if (login) {
-        await login(response.user, response.token || null);
+        await login(response.user, response.token, response.refresh_token, response.expires_at);
       }
-      navigation.replace('Planner');
+      // Auth state change switches AppNavigator to the private routes.
     } catch (error) {
       if (Platform.OS === 'web') window.alert(error.message || 'Login failed.');
       else Alert.alert('Login Failed', error.message || 'Login failed.');
@@ -141,8 +166,8 @@ export default function LoginScreen({ navigation }) {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <TouchableWithoutFeedback onPress={Platform.OS === 'web' ? null : Keyboard.dismiss}>
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
-            <View style={styles.headerContainer}>
+            <ResponsiveContainer>
+              <View style={styles.headerContainer}>
               <Text style={styles.title}>SquadSpot</Text>
               <Text style={styles.subtitle}>Welcome back! Sign in to continue</Text>
             </View>
@@ -190,7 +215,7 @@ export default function LoginScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', gap: 16 }}>
                   {/* Google Login Button */}
                   <TouchableOpacity 
-                    disabled={isOAuthLoading || isLoading}
+                    disabled={!request || isOAuthLoading || isLoading}
                     style={{ 
                       backgroundColor: 'rgba(255,255,255,0.08)', 
                       paddingVertical: 12, 
@@ -203,7 +228,7 @@ export default function LoginScreen({ navigation }) {
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.15)',
                       gap: 10,
-                      opacity: (isOAuthLoading || isLoading) ? 0.7 : 1
+                      opacity: (!request || isOAuthLoading || isLoading) ? 0.7 : 1
                     }} 
                     onPress={handleGooglePress}
                   >
@@ -226,13 +251,27 @@ export default function LoginScreen({ navigation }) {
                       style={{ width: 140, height: 48 }}
                       onPress={async () => {
                         try {
+                          const randomBytes = await Crypto.getRandomBytesAsync(32);
+                          const rawNonce = Array.from(randomBytes)
+                            .map((byte) => byte.toString(16).padStart(2, '0'))
+                            .join('');
+                          const hashedNonce = await Crypto.digestStringAsync(
+                            Crypto.CryptoDigestAlgorithm.SHA256,
+                            rawNonce
+                          );
                           const credential = await AppleAuthentication.signInAsync({
+                            nonce: hashedNonce,
                             requestedScopes: [
                               AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
                               AppleAuthentication.AppleAuthenticationScope.EMAIL,
                             ],
                           });
-                          handleBackendOAuth('apple', credential.identityToken, null);
+                          const appleFullName = credential.fullName
+                            ? [credential.fullName.givenName, credential.fullName.middleName, credential.fullName.familyName]
+                                .filter(Boolean)
+                                .join(' ')
+                            : null;
+                          handleBackendOAuth('apple', credential.identityToken, null, rawNonce, appleFullName);
                         } catch (e) {
                           if (e.code !== 'ERR_REQUEST_CANCELED') {
                             Alert.alert('Apple Auth Error', e.message);
@@ -278,7 +317,7 @@ export default function LoginScreen({ navigation }) {
                 <Text style={styles.signUpText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
-
+            </ResponsiveContainer>
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
