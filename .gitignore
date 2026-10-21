@@ -20,3 +20,11 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+AKASH_WORK_README.md
+COST_AND_DURATION_FIX_README.md
+ITINERARY_FIXES.md
+PATCH_INSTRUCTIONS.txt
+PATCH_README.txt
+RESTORE_INSTRUCTIONS.txt
+backend/tests/
